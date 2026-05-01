@@ -16,18 +16,12 @@ from typing import Any
 
 import config
 
-# A coarse lock so two threads don't race writing the same status file.
-# We only ever hold it briefly to do a read-modify-write on a single job.
 _JOB_LOCKS: dict[str, threading.RLock] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
 def _lock_for(job_id: str) -> threading.RLock:
-    """Return a reentrant per-job lock.
-
-    Reentrant because ``update_job`` locks and then calls ``save_job`` which
-    locks again on the same thread. A non-reentrant ``Lock`` would deadlock.
-    """
+    """Return a reentrant per-job lock."""
 
     with _LOCKS_GUARD:
         lock = _JOB_LOCKS.get(job_id)
@@ -43,6 +37,8 @@ class JobFiles:
 
     srt: str | None = None
     txt: str | None = None
+    vtt: str | None = None
+    ass: str | None = None
     original: str | None = None
     video: str | None = None
 
@@ -53,6 +49,11 @@ class Job:
     url: str
     quality: str
     burn_video: bool
+    target_lang: str = "id"
+    whisper_model: str = "small"
+    source_kind: str = "url"  # "url" or "upload"
+    source_name: str | None = None  # filename for uploads, video title for URL
+    style: dict[str, Any] = field(default_factory=dict)
     status: str = "queued"  # queued | processing | done | failed
     progress: int = 0
     message: str = "Queued."
@@ -60,8 +61,7 @@ class Job:
     files: JobFiles = field(default_factory=JobFiles)
 
     def to_dict(self) -> dict[str, Any]:
-        d = asdict(self)
-        return d
+        return asdict(self)
 
 
 def new_job_id() -> str:
@@ -84,12 +84,27 @@ def job_output_dir(job_id: str) -> Path:
     return p
 
 
-def create_job(url: str, quality: str, burn_video: bool) -> Job:
+def create_job(
+    *,
+    url: str,
+    quality: str,
+    burn_video: bool,
+    target_lang: str = "id",
+    whisper_model: str = "small",
+    source_kind: str = "url",
+    source_name: str | None = None,
+    style: dict[str, Any] | None = None,
+) -> Job:
     job = Job(
         job_id=new_job_id(),
         url=url,
         quality=quality,
         burn_video=burn_video,
+        target_lang=target_lang,
+        whisper_model=whisper_model,
+        source_kind=source_kind,
+        source_name=source_name,
+        style=style or {},
     )
     job_download_dir(job.job_id)
     job_output_dir(job.job_id)
@@ -114,7 +129,15 @@ def load_job(job_id: str) -> Job | None:
     except json.JSONDecodeError:
         return None
     files_data = data.pop("files", {}) or {}
-    files = JobFiles(**files_data)
+    files = JobFiles(**{k: files_data.get(k) for k in JobFiles.__dataclass_fields__})
+
+    # Backwards-compat: pre-feature jobs may not have these keys.
+    data.setdefault("target_lang", "id")
+    data.setdefault("whisper_model", "small")
+    data.setdefault("source_kind", "url")
+    data.setdefault("source_name", None)
+    data.setdefault("style", {})
+
     return Job(files=files, **data)
 
 
@@ -126,6 +149,7 @@ def update_job(
     message: str | None = None,
     error: str | None = None,
     files: JobFiles | None = None,
+    source_name: str | None = None,
 ) -> Job | None:
     """Atomically update a subset of fields on the on-disk job record."""
 
@@ -143,6 +167,8 @@ def update_job(
             job.error = error
         if files is not None:
             job.files = files
+        if source_name is not None:
+            job.source_name = source_name
         save_job(job)
         return job
 

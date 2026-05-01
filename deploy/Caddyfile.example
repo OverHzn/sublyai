@@ -1,0 +1,33 @@
+# SublyAI — Caddy reverse proxy (template)
+#
+# Caddy auto-provisions HTTPS via Let's Encrypt. Install:
+#   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Replace sublyai.example.com with your domain. DNS for that domain must
+# already point to this server before Caddy can issue a cert.
+
+sublyai.example.com {
+    encode zstd gzip
+
+    # Match the FastAPI upload limit (1 GiB by default).
+    request_body {
+        max_size 1GB
+    }
+
+    reverse_proxy 127.0.0.1:8000 {
+        # Long-running Whisper jobs need generous timeouts.
+        transport http {
+            read_timeout  15m
+            write_timeout 15m
+        }
+    }
+
+    # Optional: extra security headers.
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy        strict-origin-when-cross-origin
+        # Comment out if your reverse-proxy chain already sets HSTS.
+        Strict-Transport-Security "max-age=63072000; includeSubDomains"
+    }
+}

@@ -2,12 +2,24 @@
 
 **Paste link. Generate Indonesian subtitles instantly.**
 
-SublyAI is a self-hosted web app that turns any public video URL into:
+SublyAI is a self-hosted web app that turns any public video URL — or a
+local file you drop into the browser — into:
 
-- Bahasa Indonesia subtitles (`.srt`) with accurate Whisper timestamps
-- Indonesian transcript (`.txt`)
+- Translated subtitles in **20+ languages** as `.srt`, `.vtt`, and `.ass`
+- Plain-text transcript (`.txt`)
 - The original downloaded video or audio
-- Optional video with subtitles burned in
+- Optional video with subtitles **burned in** (custom font, size, color and position)
+
+Other goodies built into the UI:
+
+- Per-job choice of Whisper model size (`tiny` … `large-v3`)
+- Drag-and-drop local file uploads (≤ 1 GiB)
+- Batch mode — paste many URLs, run them sequentially
+- **Inline subtitle editor** — fix transcription mistakes and regenerate every output
+- Job history sidebar (last 10 jobs, stored locally in your browser)
+- One-click "Copy transcript" to clipboard
+- Installable as a PWA on mobile / desktop
+- Production deploy templates for Docker, systemd + nginx, and Caddy
 
 It runs on Windows, Ubuntu (or any Linux VPS), and works behind an
 [ngrok](https://ngrok.com/) tunnel for NAT VPSes.
@@ -166,6 +178,53 @@ unchanged: there are no hardcoded domains.
 
 ---
 
+## Run on a VPS with systemd + nginx/Caddy
+
+The repo ships ready-to-edit templates under `deploy/`:
+
+- [`deploy/sublyai.service`](deploy/sublyai.service) — systemd unit
+- [`deploy/nginx.conf.example`](deploy/nginx.conf.example) — nginx reverse proxy with HTTPS hooks for certbot
+- [`deploy/Caddyfile.example`](deploy/Caddyfile.example) — Caddy alternative (auto HTTPS)
+
+Quick install (Ubuntu, no Docker):
+
+```bash
+# 1. System deps
+sudo apt update
+sudo apt install -y git ffmpeg python3-venv
+
+# 2. App user + clone
+sudo useradd --system --create-home --home /opt/sublyai --shell /usr/sbin/nologin sublyai
+sudo -u sublyai git clone https://github.com/OverHzn/sublyai.git /opt/sublyai
+cd /opt/sublyai
+sudo -u sublyai python3 -m venv .venv
+sudo -u sublyai .venv/bin/pip install -r requirements.txt
+
+# 3. Systemd unit
+sudo cp deploy/sublyai.service /etc/systemd/system/sublyai.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now sublyai
+sudo systemctl status sublyai
+
+# 4. Reverse proxy — pick one
+# nginx
+sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/sublyai
+sudo ln -s /etc/nginx/sites-available/sublyai /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d sublyai.example.com
+
+# OR Caddy (auto-HTTPS)
+sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+Override config (Whisper model, target language, etc.) by dropping a
+`/etc/sublyai.env` file with `SUBLYAI_WHISPER_MODEL=base`,
+`SUBLYAI_TRANSLATE_TARGET=en`, etc.
+
+---
+
 ## Run on Windows (local)
 
 1. Install Python 3.10+.
@@ -190,13 +249,17 @@ All endpoints return JSON unless they're file downloads.
 
 ### `POST /api/jobs`
 
-Form fields:
+`multipart/form-data` body. Provide **either** `url` *or* a `file` upload.
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| `url` | yes | Any URL [yt-dlp can handle](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). |
+| `url` | one of url/file | Any URL [yt-dlp can handle](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). |
+| `file` | one of url/file | Drop a local mp4/mkv/mp3/wav/m4a/webm (≤ 1 GiB). |
 | `quality` | no | One of `audio`, `480`, `720`, `1080`, `best`. Default `480`. |
 | `burn_video` | no | Truthy ("on", "true", "1") enables burn-in. |
+| `target_lang` | no | Translation target. Any code Google Translate accepts. Default `id`. |
+| `whisper_model` | no | One of `tiny`, `base`, `small`, `medium`, `large-v3`. Default `small`. |
+| `style` | no | JSON string with burn-in styling: `{font_name, font_size, font_color, outline_color, alignment, outline}`. Only applied when `burn_video` is on. |
 
 Returns `{"job_id": "..."}` and starts a background job.
 
@@ -222,12 +285,29 @@ Returns the job status JSON:
 
 `status` is one of `queued`, `processing`, `done`, `failed`.
 
+### `GET /api/jobs/{job_id}/segments`
+
+Returns the editable segments dump:
+
+```json
+{ "segments": [ { "start": 0.0, "end": 2.4, "text": "…" }, … ] }
+```
+
+### `PUT /api/jobs/{job_id}/segments`
+
+JSON body `{ "segments": [...], "rerender_video": true }`. Replaces the
+editable segments and regenerates SRT/TXT/VTT/ASS. With `rerender_video=true`
+the burn-in is also re-rendered (only allowed for jobs that originally had
+`burn_video=true` and whose source media is still on disk).
+
 ### `GET /download/{job_id}/{kind}`
 
 `kind` is one of:
 
 - `srt` → `outputs/<job_id>/subtitle_id.srt`
 - `txt` → `outputs/<job_id>/transcript_id.txt`
+- `vtt` → `outputs/<job_id>/subtitle.vtt`
+- `ass` → `outputs/<job_id>/subtitle.ass`
 - `original` → newest media file in `downloads/<job_id>/`
 - `video` → `outputs/<job_id>/video_subtitle.mp4` (only when burn-in succeeded)
 

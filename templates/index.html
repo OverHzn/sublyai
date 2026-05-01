@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#020807" />
   <title>{{ app_name }} — {{ tagline }}</title>
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -19,6 +22,13 @@
 
   <header class="topbar">
     <div class="brand">
+      <button id="history-toggle" type="button" class="icon-btn" aria-label="Job history">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
       <span class="logo" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -43,6 +53,20 @@
     </div>
   </header>
 
+  <aside id="history-drawer" class="history-drawer hidden" aria-label="Job history">
+    <div class="history-head">
+      <h3>Recent jobs</h3>
+      <button id="history-close" type="button" class="icon-btn" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/>
+        </svg>
+      </button>
+    </div>
+    <ul id="history-list" class="history-list"></ul>
+    <p id="history-empty" class="history-empty">No jobs yet — your history is stored locally in this browser.</p>
+    <button id="history-clear" type="button" class="ghost-btn">Clear history</button>
+  </aside>
+
   <main class="container">
     <section class="hero">
       <span class="hero-pill">
@@ -59,31 +83,97 @@
 
     <section class="card form-card" aria-labelledby="form-heading">
       <h2 id="form-heading" class="visually-hidden">Generate subtitles</h2>
-      <form id="job-form" autocomplete="off">
-        <div class="field-with-label">
-          <span class="section-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
-              <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07L12.5 19.5"/>
-            </svg>
-            Video Source
-          </span>
-          <div class="input-wrap">
-            <input
-              id="url"
-              name="url"
-              type="url"
-              required
-              placeholder="https://www.youtube.com/watch?v=…"
-              inputmode="url"
-              autocapitalize="none"
-              spellcheck="false"
-            />
-            <span id="url-check" class="url-check" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
+
+      <div class="mode-tabs" role="tablist" aria-label="Job source">
+        <button id="tab-url" type="button" role="tab" class="mode-tab active" aria-selected="true">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
+            <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07L12.5 19.5"/>
+          </svg>
+          URL
+        </button>
+        <button id="tab-batch" type="button" role="tab" class="mode-tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+          Batch URLs
+        </button>
+        <button id="tab-file" type="button" role="tab" class="mode-tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Upload file
+        </button>
+      </div>
+
+      <form id="job-form" autocomplete="off" enctype="multipart/form-data">
+        <div id="pane-url" class="pane">
+          <div class="field-with-label">
+            <span class="section-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
+                <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07L12.5 19.5"/>
               </svg>
+              Video Source
             </span>
+            <div class="input-wrap">
+              <input
+                id="url"
+                name="url"
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=…"
+                inputmode="url"
+                autocapitalize="none"
+                spellcheck="false"
+              />
+              <span id="url-check" class="url-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div id="pane-batch" class="pane hidden">
+          <div class="field-with-label">
+            <span class="section-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              </svg>
+              Batch URLs (one per line)
+            </span>
+            <textarea id="batch-urls" rows="5" placeholder="https://...
+https://...
+https://..."></textarea>
+            <small class="hint">Each URL becomes its own job and runs sequentially.</small>
+          </div>
+        </div>
+
+        <div id="pane-file" class="pane hidden">
+          <div class="field-with-label">
+            <span class="section-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Upload file
+            </span>
+            <label id="dropzone" class="dropzone" for="file-input">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <strong>Drag &amp; drop</strong> a video / audio file here
+              <small>or click to browse — max 1 GiB · mp4, mkv, mp3, wav, m4a, webm…</small>
+              <input id="file-input" type="file" accept="video/*,audio/*,.mkv,.webm" />
+              <span id="file-chip" class="file-chip hidden"></span>
+            </label>
           </div>
         </div>
 
@@ -123,11 +213,90 @@
               </span>
               <span class="checkbox-text">
                 <strong>Burn subtitle to video</strong>
-                <small>Renders Indonesian subtitles into the video file.</small>
+                <small>Renders subtitles into the video file.</small>
               </span>
             </label>
           </div>
         </div>
+
+        <details class="advanced">
+          <summary>
+            <span class="adv-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 5 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 5 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 5a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19 15z"/>
+              </svg>
+            </span>
+            Advanced options
+            <span class="adv-summary">— language, model, burn-in style</span>
+          </summary>
+
+          <div class="adv-grid">
+            <div class="field-with-label">
+              <span class="section-label">Target language</span>
+              <div class="select-wrap">
+                <select id="target_lang" name="target_lang">
+                  {% for code, label in target_languages %}
+                    <option value="{{ code }}" {% if code == default_target_lang %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="field-with-label">
+              <span class="section-label">Whisper model</span>
+              <div class="select-wrap">
+                <select id="whisper_model" name="whisper_model">
+                  {% for code, label in whisper_models %}
+                    <option value="{{ code }}" {% if code == default_whisper_model %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <fieldset class="style-group">
+            <legend>Burn-in style <small>(only applied when “Burn subtitle to video” is checked)</small></legend>
+            <div class="style-grid">
+              <div class="field-with-label">
+                <span class="section-label">Font</span>
+                <div class="select-wrap">
+                  <select id="style_font_name">
+                    {% for f in style_fonts %}
+                      <option value="{{ f }}" {% if f == style_defaults.font_name %}selected{% endif %}>{{ f }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="field-with-label">
+                <span class="section-label">Size</span>
+                <input id="style_font_size" type="number" min="8" max="96" step="1" value="{{ style_defaults.font_size }}" />
+              </div>
+              <div class="field-with-label">
+                <span class="section-label">Position</span>
+                <div class="select-wrap">
+                  <select id="style_alignment">
+                    {% for code, label in style_positions %}
+                      <option value="{{ code }}" {% if code == style_defaults.alignment %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="field-with-label">
+                <span class="section-label">Text color</span>
+                <input id="style_font_color" type="color" value="{{ style_defaults.font_color }}" />
+              </div>
+              <div class="field-with-label">
+                <span class="section-label">Outline color</span>
+                <input id="style_outline_color" type="color" value="{{ style_defaults.outline_color }}" />
+              </div>
+              <div class="field-with-label">
+                <span class="section-label">Outline width</span>
+                <input id="style_outline" type="number" min="0" max="8" step="1" value="{{ style_defaults.outline }}" />
+              </div>
+            </div>
+          </fieldset>
+        </details>
 
         <button id="generate-btn" type="submit" class="primary-btn">
           <svg class="btn-spark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -139,6 +308,7 @@
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-dasharray="42 60"/>
           </svg>
         </button>
+        <p id="batch-progress" class="batch-progress hidden"></p>
       </form>
     </section>
 
@@ -182,7 +352,27 @@
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
           </span>
-          <span class="dl-text"><strong>Download SRT</strong><small>Subtitle (.srt)</small></span>
+          <span class="dl-text"><strong>SRT</strong><small>Subtitle (.srt)</small></span>
+        </a>
+        <a id="dl-vtt" class="dl-btn hidden" href="#" download>
+          <span class="dl-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </span>
+          <span class="dl-text"><strong>VTT</strong><small>WebVTT (.vtt)</small></span>
+        </a>
+        <a id="dl-ass" class="dl-btn hidden" href="#" download>
+          <span class="dl-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </span>
+          <span class="dl-text"><strong>ASS</strong><small>SubStation (.ass)</small></span>
         </a>
         <a id="dl-txt" class="dl-btn hidden" href="#" download>
           <span class="dl-icon" aria-hidden="true">
@@ -193,7 +383,7 @@
               <line x1="9" y1="17" x2="13" y2="17"/>
             </svg>
           </span>
-          <span class="dl-text"><strong>Download TXT</strong><small>Transcript (.txt)</small></span>
+          <span class="dl-text"><strong>TXT</strong><small>Transcript (.txt)</small></span>
         </a>
         <a id="dl-original" class="dl-btn hidden" href="#" download>
           <span class="dl-icon" aria-hidden="true">
@@ -202,7 +392,7 @@
               <polygon points="22 8 16 12 22 16 22 8"/>
             </svg>
           </span>
-          <span class="dl-text"><strong id="dl-original-label">Download Original</strong><small id="dl-original-sub">Full quality (.mp4)</small></span>
+          <span class="dl-text"><strong id="dl-original-label">Original</strong><small id="dl-original-sub">Source media</small></span>
         </a>
         <a id="dl-video" class="dl-btn hidden" href="#" download>
           <span class="dl-icon" aria-hidden="true">
@@ -212,8 +402,25 @@
               <line x1="8" y1="18" x2="16" y2="18"/>
             </svg>
           </span>
-          <span class="dl-text"><strong>Download Video</strong><small>Subtitle Burned</small></span>
+          <span class="dl-text"><strong>Video</strong><small>Subtitle Burned</small></span>
         </a>
+      </div>
+
+      <div id="result-actions" class="result-actions hidden">
+        <button id="btn-edit" type="button" class="ghost-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 20h9"/>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
+          </svg>
+          Edit subtitles
+        </button>
+        <button id="btn-copy-txt" type="button" class="ghost-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy transcript
+        </button>
       </div>
     </section>
 
@@ -255,8 +462,8 @@
       <article class="feature">
         <div class="feature-icon flag" aria-label="Indonesian flag" role="img"></div>
         <div>
-          <h3>Bahasa Indonesia</h3>
-          <p>Every segment translated to Indonesian — falls back gracefully on errors.</p>
+          <h3>Bahasa Indonesia &amp; more</h3>
+          <p>Pick from 20+ target languages — falls back gracefully on errors.</p>
         </div>
         <span class="feature-arrow" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -266,6 +473,33 @@
       </article>
     </section>
   </main>
+
+  <!-- Subtitle editor modal -->
+  <div id="editor-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+    <div class="modal-card">
+      <header class="modal-head">
+        <h3 id="editor-title">Edit subtitles</h3>
+        <button id="editor-close" type="button" class="icon-btn" aria-label="Close editor">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/>
+          </svg>
+        </button>
+      </header>
+      <div id="editor-body" class="editor-body" aria-busy="true">Loading…</div>
+      <footer class="modal-foot">
+        <label class="rerender">
+          <input id="editor-rerender" type="checkbox" />
+          Re-burn video with new subtitles
+        </label>
+        <div class="modal-foot-actions">
+          <button id="editor-cancel" type="button" class="ghost-btn">Cancel</button>
+          <button id="editor-save" type="button" class="primary-btn small">
+            <span class="btn-text">Save &amp; regenerate</span>
+          </button>
+        </div>
+      </footer>
+    </div>
+  </div>
 
   <footer class="footer">
     <p>&copy; 2024 {{ app_name }}. All rights reserved.
