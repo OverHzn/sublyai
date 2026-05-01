@@ -1,0 +1,36 @@
+# Don't ship dev cruft into the image.
+.git
+.gitignore
+.github
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.DS_Store
+Thumbs.db
+
+# Per-run state — provided by host bind mounts at runtime, not baked in.
+downloads/*
+!downloads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+jobs/*
+!jobs/.gitkeep
+
+# Editor
+.idea
+.vscode
+*.swp
+
+# Local dev
+*.log
+*.env
+.env*
+!.env.example

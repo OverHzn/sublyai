@@ -1,0 +1,39 @@
+# One-command deploy:  docker compose up -d --build
+#
+# Open http://<server-ip>:8000  (or use ngrok / a reverse proxy in front).
+#
+# Volumes:
+#   ./downloads, ./outputs, ./jobs are bind-mounted so files survive
+#   container rebuilds and you can inspect them from the host.
+#   whisper_cache is a named volume so the model is downloaded once and
+#   reused across rebuilds.
+
+services:
+  sublyai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sublyai:latest
+    container_name: sublyai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Override these if you have a beefier (or smaller) machine.
+      SUBLYAI_WHISPER_MODEL: ${SUBLYAI_WHISPER_MODEL:-small}
+      SUBLYAI_WHISPER_DEVICE: ${SUBLYAI_WHISPER_DEVICE:-cpu}
+      SUBLYAI_WHISPER_COMPUTE_TYPE: ${SUBLYAI_WHISPER_COMPUTE_TYPE:-int8}
+    volumes:
+      - ./downloads:/app/downloads
+      - ./outputs:/app/outputs
+      - ./jobs:/app/jobs
+      - whisper_cache:/home/app/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  whisper_cache:

@@ -75,7 +75,63 @@ sublyai/
 
 ---
 
-## Run on Ubuntu (or any Linux VPS)
+## Run with Docker (recommended)
+
+This is the fastest path on a fresh server — no manual ffmpeg / Python / venv
+setup. You only need Docker (with the Compose plugin) installed.
+
+```bash
+git clone https://github.com/OverHzn/sublyai.git
+cd sublyai
+docker compose up -d --build
+```
+
+Open `http://<server-ip>:8000`. That's it.
+
+### Useful Docker commands
+
+```bash
+docker compose logs -f sublyai      # tail logs
+docker compose ps                   # is it healthy?
+docker compose restart sublyai      # restart after pulling new code
+docker compose down                 # stop and remove the container
+docker compose up -d --build        # rebuild after code changes
+```
+
+### Where files live
+
+The compose file bind-mounts the runtime directories so the artifacts survive
+container rebuilds and are inspectable from the host:
+
+| Host path     | Container path  | Contents |
+| ---           | ---             | --- |
+| `./downloads` | `/app/downloads` | yt-dlp raw downloads, per `job_id` |
+| `./outputs`   | `/app/outputs`   | `audio.wav`, `subtitle_id.srt`, `transcript_id.txt`, `video_subtitle.mp4` |
+| `./jobs`      | `/app/jobs`      | `<job_id>.json` status files |
+| named volume `whisper_cache` | `/home/app/.cache/huggingface` | Whisper model weights (downloaded once, ~500 MB for `small`) |
+
+### Tuning Whisper
+
+Override these via environment variables (in your shell, a `.env` file next to
+`docker-compose.yml`, or by editing the compose file directly):
+
+```bash
+SUBLYAI_WHISPER_MODEL=base       # tiny | base | small | medium | large-v3
+SUBLYAI_WHISPER_DEVICE=cpu       # cuda for GPU
+SUBLYAI_WHISPER_COMPUTE_TYPE=int8 # float16 / float32 on GPU
+```
+
+Smaller VPS? Use `base` or `tiny`. Beefy box? Try `medium`.
+
+### Behind a reverse proxy / ngrok
+
+The container only listens on port 8000 inside Docker; the compose file maps
+that to the host's `:8000`. Point your nginx/Caddy/Traefik at `127.0.0.1:8000`,
+or simply run `ngrok http 8000` on the host.
+
+---
+
+## Run on Ubuntu (or any Linux VPS) — without Docker
 
 ```bash
 # 1. system deps
