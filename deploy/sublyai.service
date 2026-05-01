@@ -1,0 +1,44 @@
+# SublyAI — systemd unit file (template)
+#
+# Install (as root):
+#   sudo cp deploy/sublyai.service /etc/systemd/system/sublyai.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sublyai
+#   sudo systemctl status sublyai
+#
+# Adjust the User, WorkingDirectory and EnvironmentFile lines below to match
+# your deployment. The defaults assume:
+#   - The repo is cloned at /opt/sublyai
+#   - A non-root user named "sublyai" owns the directory
+#   - A virtualenv lives at /opt/sublyai/.venv with the project deps installed
+#   - Optional /etc/sublyai.env contains overrides (SUBLYAI_WHISPER_MODEL=...)
+
+[Unit]
+Description=SublyAI — AI subtitle generator
+Documentation=https://github.com/OverHzn/sublyai
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sublyai
+Group=sublyai
+WorkingDirectory=/opt/sublyai
+EnvironmentFile=-/etc/sublyai.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/sublyai/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Hardening (works on most modern systemd; relax if it conflicts with your
+# storage layout).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/sublyai/downloads /opt/sublyai/outputs /opt/sublyai/jobs
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

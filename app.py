@@ -2,19 +2,23 @@
 
 Routes
 ------
-GET  /
-GET  /api/jobs/{job_id}
-POST /api/jobs
-GET  /download/{job_id}/{kind}    kind in {srt, txt, original, video}
+GET  /                                     index page
+GET  /healthz                              health probe
+POST /api/jobs                             create job (URL or file upload)
+GET  /api/jobs/{job_id}                    job status JSON
+GET  /api/jobs/{job_id}/segments           translated segments JSON
+PUT  /api/jobs/{job_id}/segments           replace segments + regenerate files
+GET  /download/{job_id}/{kind}             kind in {srt, txt, vtt, ass, original, video}
 
-The heavy work (download, ffmpeg, Whisper, translate, srt/txt, optional
-burn-in) runs on a background thread launched via FastAPI's BackgroundTasks
-so the HTTP request returns immediately with a job_id. State is persisted to
-``jobs/<job_id>.json`` and polled by the browser.
+The heavy work (download, ffmpeg, Whisper, translate, srt/txt/vtt/ass,
+optional burn-in) runs on a background thread launched on job creation so the
+HTTP request returns immediately with a job_id. State is persisted to
+``jobs/<job_id>.json`` and polled by the browser every 2.5 seconds.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -22,8 +26,15 @@ import traceback
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -31,9 +42,16 @@ import config
 from utils import jobs as jobs_mod
 from utils.downloader import DownloadError, download
 from utils.jobs import Job, JobFiles
-from utils.media import FFmpegError, FFmpegMissing, burn_subtitle, extract_audio
-from utils.subtitle import write_srt, write_txt
-from utils.transcriber import transcribe
+from utils.media import BurnStyle, FFmpegError, FFmpegMissing, burn_subtitle, extract_audio
+from utils.subtitle import (
+    read_segments_json,
+    write_ass,
+    write_segments_json,
+    write_srt,
+    write_txt,
+    write_vtt,
+)
+from utils.transcriber import Segment, transcribe
 from utils.translator import translate_segments
 
 logging.basicConfig(
@@ -66,7 +84,33 @@ def _validate_quality(quality: str) -> str:
     return quality
 
 
-def _set(job_id: str, *, status=None, progress=None, message=None, error=None, files=None) -> None:
+def _validate_whisper_model(name: str | None) -> str:
+    name = (name or config.WHISPER_MODEL).strip()
+    if name not in config.ALLOWED_WHISPER_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported Whisper model {name!r}.",
+        )
+    return name
+
+
+def _validate_target_lang(lang: str | None) -> str:
+    lang = (lang or config.TRANSLATE_TARGET_LANG).strip()
+    if not re.match(r"^[A-Za-z][A-Za-z0-9-]{0,9}$", lang):
+        raise HTTPException(status_code=400, detail=f"Invalid target_lang {lang!r}.")
+    return lang
+
+
+def _set(
+    job_id: str,
+    *,
+    status=None,
+    progress=None,
+    message=None,
+    error=None,
+    files=None,
+    source_name=None,
+) -> None:
     jobs_mod.update_job(
         job_id,
         status=status,
@@ -74,22 +118,37 @@ def _set(job_id: str, *, status=None, progress=None, message=None, error=None, f
         message=message,
         error=error,
         files=files,
+        source_name=source_name,
     )
 
 
-def _public_files(job_id: str, *, srt: Path, txt: Path, video: Path | None) -> JobFiles:
+def _public_files(job_id: str, *, out_dir: Path, video: Path | None) -> JobFiles:
     """Build the public ``files`` mapping returned to the browser."""
 
     files = JobFiles()
-    if srt.exists():
+    if (out_dir / "subtitle_id.srt").exists():
         files.srt = f"/download/{job_id}/srt"
-    if txt.exists():
+    if (out_dir / "transcript_id.txt").exists():
         files.txt = f"/download/{job_id}/txt"
+    if (out_dir / "subtitle.vtt").exists():
+        files.vtt = f"/download/{job_id}/vtt"
+    if (out_dir / "subtitle.ass").exists():
+        files.ass = f"/download/{job_id}/ass"
     if jobs_mod.find_original_media(job_id):
         files.original = f"/download/{job_id}/original"
     if video is not None and video.exists():
         files.video = f"/download/{job_id}/video"
     return files
+
+
+def _write_all_subs(translated: list[Segment], out_dir: Path) -> None:
+    """Emit SRT, TXT, VTT, ASS and the editable JSON dump in one place."""
+
+    write_srt(translated, out_dir / "subtitle_id.srt")
+    write_txt(translated, out_dir / "transcript_id.txt")
+    write_vtt(translated, out_dir / "subtitle.vtt")
+    write_ass(translated, out_dir / "subtitle.ass")
+    write_segments_json(translated, out_dir / "segments.json")
 
 
 def _process_job(job_id: str) -> None:
@@ -103,52 +162,72 @@ def _process_job(job_id: str) -> None:
             return
 
         out_dir = jobs_mod.job_output_dir(job_id)
-        srt_path = out_dir / "subtitle_id.srt"
-        txt_path = out_dir / "transcript_id.txt"
         burn_path = out_dir / "video_subtitle.mp4"
 
-        # 1. Download
-        _set(job_id, status="processing", progress=2, message="Starting media download…")
-        media_path = download(
-            job.url,
-            job_id,
-            job.quality,
-            job.burn_video,
-            progress_callback=lambda pct, msg: _set(
+        # 1. Acquire source media — either via yt-dlp or a pre-uploaded file.
+        if job.source_kind == "upload":
+            media_path = jobs_mod.find_original_media(job_id)
+            if media_path is None:
+                raise RuntimeError("Uploaded file vanished from disk.")
+            _set(job_id, status="processing", progress=20, message="File received.")
+        else:
+            _set(job_id, status="processing", progress=2, message="Starting media download…")
+            media_path = download(
+                job.url,
                 job_id,
-                progress=2 + int(pct * 0.18),  # download stage = 2..20%
-                message=msg,
-            ),
-        )
-        _set(job_id, progress=22, message="Media downloaded successfully…")
+                job.quality,
+                job.burn_video,
+                progress_callback=lambda pct, msg: _set(
+                    job_id,
+                    progress=2 + int(pct * 0.18),  # download stage = 2..20%
+                    message=msg,
+                ),
+            )
+            _set(
+                job_id,
+                progress=22,
+                message="Media downloaded successfully…",
+                source_name=media_path.name,
+            )
 
         # 2. Audio extraction
         _set(job_id, progress=25, message="Extracting audio…")
         audio_path = extract_audio(media_path, out_dir)
 
         # 3. Transcribe
-        _set(job_id, progress=32, message="AI is creating timestamps…")
-        segments = transcribe(audio_path)
+        _set(
+            job_id,
+            progress=32,
+            message=f"AI is creating timestamps with Whisper '{job.whisper_model}'…",
+        )
+        segments = transcribe(audio_path, model_name=job.whisper_model)
         if not segments:
             raise RuntimeError("Transcription returned no segments. Is the audio silent?")
         _set(job_id, progress=65, message=f"Transcribed {len(segments)} segments.")
 
         # 4. Translate
-        _set(job_id, progress=70, message="Translating subtitles to Indonesian…")
-        translated = translate_segments(segments)
+        _set(
+            job_id,
+            progress=70,
+            message=f"Translating subtitles to '{job.target_lang}'…",
+        )
+        translated = translate_segments(segments, target=job.target_lang)
 
-        # 5. Write SRT + TXT
-        _set(job_id, progress=85, message="Generating SRT and TXT files…")
-        write_srt(translated, srt_path)
-        write_txt(translated, txt_path)
+        # 5. Write SRT + TXT + VTT + ASS + segments.json
+        _set(job_id, progress=85, message="Generating subtitle files…")
+        _write_all_subs(translated, out_dir)
 
         burn_out: Path | None = None
         if job.burn_video:
             _set(job_id, progress=90, message="Burning subtitle into video…")
             try:
-                burn_out = burn_subtitle(media_path, srt_path, burn_path)
+                burn_out = burn_subtitle(
+                    media_path,
+                    out_dir / "subtitle_id.srt",
+                    burn_path,
+                    style=BurnStyle.from_dict(job.style),
+                )
             except (FFmpegError, FFmpegMissing) as e:
-                # Don't fail the whole job; surface as a warning in the message
                 log.warning("Burn-in failed for %s: %s", job_id, e)
                 _set(
                     job_id,
@@ -157,7 +236,7 @@ def _process_job(job_id: str) -> None:
                     ),
                 )
 
-        files = _public_files(job_id, srt=srt_path, txt=txt_path, video=burn_out)
+        files = _public_files(job_id, out_dir=out_dir, video=burn_out)
         _set(
             job_id,
             status="done",
@@ -213,32 +292,133 @@ async def index(request: Request) -> HTMLResponse:
             "description": config.APP_DESCRIPTION,
             "qualities": config.ALLOWED_QUALITIES,
             "default_quality": config.DEFAULT_QUALITY,
+            "whisper_models": config.WHISPER_MODELS,
+            "default_whisper_model": config.WHISPER_MODEL,
+            "target_languages": config.TARGET_LANGUAGES,
+            "default_target_lang": config.TRANSLATE_TARGET_LANG,
+            "style_fonts": config.STYLE_FONTS,
+            "style_positions": config.STYLE_POSITIONS,
+            "style_defaults": config.STYLE_DEFAULTS,
         },
     )
 
 
 def _start_worker(job_id: str) -> None:
-    """Spawn a daemon thread that runs the pipeline for ``job_id``.
-
-    We use a real thread rather than FastAPI's BackgroundTasks because the
-    pipeline is sync, CPU-heavy, and minutes long — it would otherwise tie up
-    the event loop.
-    """
+    """Spawn a daemon thread that runs the pipeline for ``job_id``."""
 
     t = threading.Thread(target=_process_job, args=(job_id,), daemon=True)
     t.start()
 
 
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_filename(name: str | None) -> str:
+    base = (name or "upload.mp4").strip().replace("\\", "/").rsplit("/", 1)[-1]
+    base = _SAFE_FILENAME_RE.sub("_", base)
+    if not base or base.startswith("."):
+        base = "upload" + (Path(name or "").suffix or ".mp4")
+    return base[:120]
+
+
+def _save_upload(file: UploadFile, dest_dir: Path) -> Path:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / _safe_filename(file.filename)
+    written = 0
+    with open(dest, "wb") as out:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > config.MAX_UPLOAD_BYTES:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"Upload exceeds {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit."
+                    ),
+                )
+            out.write(chunk)
+    if written == 0:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Empty upload.")
+    return dest
+
+
 @app.post("/api/jobs")
 async def create_job_endpoint(
-    url: str = Form(...),
+    url: str | None = Form(None),
     quality: str = Form(config.DEFAULT_QUALITY),
     burn_video: str | None = Form(None),
+    target_lang: str | None = Form(None),
+    whisper_model: str | None = Form(None),
+    style: str | None = Form(None),
+    file: UploadFile | None = File(None),
 ) -> dict:
-    url = _validate_url(url)
-    quality = _validate_quality(quality)
+    """Create a new job from either a URL or a multipart file upload."""
+
     burn = str(burn_video).lower() in ("1", "true", "on", "yes") if burn_video else False
-    job = jobs_mod.create_job(url=url, quality=quality, burn_video=burn)
+    quality = _validate_quality(quality)
+    target_lang = _validate_target_lang(target_lang)
+    whisper_model = _validate_whisper_model(whisper_model)
+
+    style_dict: dict = {}
+    if style:
+        try:
+            parsed = json.loads(style)
+            if isinstance(parsed, dict):
+                style_dict = parsed
+        except json.JSONDecodeError:
+            pass
+
+    has_file = file is not None and file.filename
+    has_url = bool((url or "").strip())
+
+    if not has_file and not has_url:
+        raise HTTPException(status_code=400, detail="Provide a URL or a file upload.")
+
+    if has_file:
+        # File upload path — skip yt-dlp and write the file straight into
+        # the job's downloads directory so the rest of the pipeline can find
+        # it via ``find_original_media``.
+        job = jobs_mod.create_job(
+            url="(uploaded file)",
+            quality=quality,
+            burn_video=burn,
+            target_lang=target_lang,
+            whisper_model=whisper_model,
+            source_kind="upload",
+            source_name=file.filename,
+            style=style_dict,
+        )
+        try:
+            saved = _save_upload(file, jobs_mod.job_download_dir(job.job_id))
+        except HTTPException:
+            jobs_mod.update_job(
+                job.job_id,
+                status="failed",
+                error="Upload failed.",
+                message="Upload failed.",
+            )
+            raise
+        log.info("Job %s: received upload %s (%d bytes)", job.job_id, saved.name, saved.stat().st_size)
+        _start_worker(job.job_id)
+        return {"job_id": job.job_id}
+
+    # URL path
+    valid_url = _validate_url(url or "")
+    job = jobs_mod.create_job(
+        url=valid_url,
+        quality=quality,
+        burn_video=burn,
+        target_lang=target_lang,
+        whisper_model=whisper_model,
+        source_kind="url",
+        source_name=None,
+        style=style_dict,
+    )
     _start_worker(job.job_id)
     return {"job_id": job.job_id}
 
@@ -251,7 +431,72 @@ async def job_status(job_id: str) -> dict:
     return job.to_dict()
 
 
-KindT = Literal["srt", "txt", "original", "video"]
+@app.get("/api/jobs/{job_id}/segments")
+async def get_segments(job_id: str) -> JSONResponse:
+    job = jobs_mod.load_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    out_dir = config.OUTPUTS_DIR / job_id
+    segs = read_segments_json(out_dir / "segments.json")
+    return JSONResponse({"segments": [s.to_dict() for s in segs]})
+
+
+@app.put("/api/jobs/{job_id}/segments")
+async def put_segments(job_id: str, payload: dict) -> dict:
+    """Replace the editable segments and regenerate SRT/TXT/VTT/ASS.
+
+    Optional ``rerender_video=True`` will also re-run the burn-in step using
+    the original media. We never re-run Whisper here.
+    """
+
+    job = jobs_mod.load_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    raw_segs = payload.get("segments")
+    if not isinstance(raw_segs, list) or not raw_segs:
+        raise HTTPException(status_code=400, detail="segments[] is required.")
+
+    parsed: list[Segment] = []
+    for item in raw_segs:
+        if not isinstance(item, dict):
+            continue
+        try:
+            parsed.append(Segment.from_dict(item))
+        except (KeyError, ValueError, TypeError):
+            continue
+    if not parsed:
+        raise HTTPException(status_code=400, detail="No valid segments.")
+    parsed.sort(key=lambda s: s.start)
+
+    out_dir = config.OUTPUTS_DIR / job_id
+    _write_all_subs(parsed, out_dir)
+
+    rerender = bool(payload.get("rerender_video"))
+    burn_out: Path | None = out_dir / "video_subtitle.mp4"
+    if not burn_out.exists():
+        burn_out = None
+
+    if rerender and job.burn_video:
+        media_path = jobs_mod.find_original_media(job_id)
+        if media_path is None:
+            raise HTTPException(status_code=400, detail="Original media missing; cannot re-burn.")
+        try:
+            burn_out = burn_subtitle(
+                media_path,
+                out_dir / "subtitle_id.srt",
+                out_dir / "video_subtitle.mp4",
+                style=BurnStyle.from_dict(job.style),
+            )
+        except (FFmpegError, FFmpegMissing) as e:
+            raise HTTPException(status_code=500, detail=f"Re-burn failed: {e}")
+
+    files = _public_files(job_id, out_dir=out_dir, video=burn_out)
+    jobs_mod.update_job(job_id, files=files)
+    return {"ok": True, "count": len(parsed), "rerender": rerender}
+
+
+KindT = Literal["srt", "txt", "vtt", "ass", "original", "video"]
 
 
 @app.get("/download/{job_id}/{kind}")
@@ -266,13 +511,25 @@ async def download_artifact(job_id: str, kind: KindT) -> FileResponse:
         path = out_dir / "subtitle_id.srt"
         if not path.exists():
             raise HTTPException(status_code=404, detail="SRT not generated yet.")
-        return FileResponse(path, filename=f"{job_id}_subtitle_id.srt", media_type="application/x-subrip")
+        return FileResponse(path, filename=f"{job_id}_subtitle.srt", media_type="application/x-subrip")
 
     if kind == "txt":
         path = out_dir / "transcript_id.txt"
         if not path.exists():
             raise HTTPException(status_code=404, detail="Transcript not generated yet.")
-        return FileResponse(path, filename=f"{job_id}_transcript_id.txt", media_type="text/plain")
+        return FileResponse(path, filename=f"{job_id}_transcript.txt", media_type="text/plain")
+
+    if kind == "vtt":
+        path = out_dir / "subtitle.vtt"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="VTT not generated yet.")
+        return FileResponse(path, filename=f"{job_id}_subtitle.vtt", media_type="text/vtt")
+
+    if kind == "ass":
+        path = out_dir / "subtitle.ass"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="ASS not generated yet.")
+        return FileResponse(path, filename=f"{job_id}_subtitle.ass", media_type="text/x-ssa")
 
     if kind == "video":
         path = out_dir / "video_subtitle.mp4"
@@ -290,5 +547,5 @@ async def download_artifact(job_id: str, kind: KindT) -> FileResponse:
 
 
 @app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+async def healthz() -> dict:
+    return {"ok": True, "app": config.APP_NAME}
