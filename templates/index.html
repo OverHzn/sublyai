@@ -3,39 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b1020" />
+  <meta name="theme-color" content="#020807" />
   <title>{{ app_name }} — {{ tagline }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+  />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div class="bg-blobs" aria-hidden="true">
-    <span class="blob blob-a"></span>
-    <span class="blob blob-b"></span>
-    <span class="blob blob-c"></span>
-  </div>
+  <div class="bg-glow" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
 
   <header class="topbar">
     <div class="brand">
-      <div class="logo" aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="2" y="6" width="28" height="20" rx="6" fill="url(#g1)"/>
-          <rect x="7" y="14" width="14" height="2.4" rx="1.2" fill="white" opacity=".95"/>
-          <rect x="7" y="18.6" width="9" height="2.4" rx="1.2" fill="white" opacity=".75"/>
-          <defs>
-            <linearGradient id="g1" x1="0" y1="0" x2="32" y2="32">
-              <stop stop-color="#7c5cff"/>
-              <stop offset="1" stop-color="#22d3ee"/>
-            </linearGradient>
-          </defs>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <path d="M7 9h10M7 13h6"/>
         </svg>
-      </div>
+      </span>
       <span class="brand-name">{{ app_name }}</span>
     </div>
-    <a class="ghost-link" href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">Powered by yt-dlp · Whisper</a>
+
+    <div class="topbar-right">
+      <span class="powered">Powered by <span class="accent">yt-dlp</span> · <span class="accent">Whisper</span></span>
+      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Toggle theme">
+        <svg id="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg id="icon-sun" class="hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+        <span id="theme-label">Dark</span>
+      </button>
+    </div>
   </header>
 
   <main class="container">
     <section class="hero">
+      <span class="hero-pill">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2l1.7 4.6L18 8l-4.3 1.4L12 14l-1.7-4.6L6 8l4.3-1.4z"/>
+          <path d="M19 14l.7 1.9L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-1.1z"/>
+        </svg>
+        AI-Powered Subtitle Generator
+      </span>
       <h1 class="hero-title">{{ app_name }}</h1>
       <p class="hero-tagline">{{ tagline }}</p>
       <p class="hero-desc">{{ description }}</p>
@@ -44,25 +60,43 @@
     <section class="card form-card" aria-labelledby="form-heading">
       <h2 id="form-heading" class="visually-hidden">Generate subtitles</h2>
       <form id="job-form" autocomplete="off">
-        <label class="field">
-          <span class="field-label">Video URL</span>
-          <input
-            id="url"
-            name="url"
-            type="url"
-            required
-            placeholder="https://www.youtube.com/watch?v=…"
-            inputmode="url"
-            autocapitalize="none"
-            spellcheck="false"
-          />
-        </label>
+        <div class="field-with-label">
+          <span class="section-label">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
+              <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07L12.5 19.5"/>
+            </svg>
+            Video Source
+          </span>
+          <div class="input-wrap">
+            <input
+              id="url"
+              name="url"
+              type="url"
+              required
+              placeholder="https://www.youtube.com/watch?v=…"
+              inputmode="url"
+              autocapitalize="none"
+              spellcheck="false"
+            />
+            <span id="url-check" class="url-check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </span>
+          </div>
+        </div>
 
         <div class="row">
-          <label class="field">
-            <span class="field-label">Quality</span>
+          <div class="field-with-label">
+            <span class="section-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+              </svg>
+              Quality
+            </span>
             <div class="select-wrap">
-              <select id="quality" name="quality">
+              <select id="quality" name="quality" aria-label="Quality">
                 <option value="audio">Audio only / subtitle only</option>
                 <option value="480" {% if default_quality == "480" %}selected{% endif %}>480p</option>
                 <option value="720">720p</option>
@@ -70,19 +104,36 @@
                 <option value="best">Best available</option>
               </select>
             </div>
-          </label>
+          </div>
 
-          <label class="field checkbox">
-            <input id="burn_video" name="burn_video" type="checkbox" />
-            <span class="checkbox-box" aria-hidden="true"></span>
-            <span class="checkbox-text">
-              <strong>Burn subtitle to video</strong>
-              <small>Renders Indonesian subtitles into the video file.</small>
+          <div class="field-with-label">
+            <span class="section-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="9 12 12 15 16 10"/>
+              </svg>
+              Output
             </span>
-          </label>
+            <label class="output-card" for="burn_video">
+              <input id="burn_video" name="burn_video" type="checkbox" />
+              <span class="checkbox-box" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </span>
+              <span class="checkbox-text">
+                <strong>Burn subtitle to video</strong>
+                <small>Renders Indonesian subtitles into the video file.</small>
+              </span>
+            </label>
+          </div>
         </div>
 
         <button id="generate-btn" type="submit" class="primary-btn">
+          <svg class="btn-spark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>
+            <path d="M19 14l.6 1.6L21 16l-1.4.4L19 18l-.6-1.6L17 16l1.4-.4z"/>
+          </svg>
           <span class="btn-text">Generate</span>
           <svg class="btn-spinner" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-dasharray="42 60"/>
@@ -93,57 +144,137 @@
 
     <section id="status-card" class="card status-card hidden" aria-live="polite">
       <div class="status-head">
-        <span id="status-pill" class="pill">queued</span>
-        <span id="status-pct" class="pct">0%</span>
+        <span id="status-icon" class="status-icon queued" aria-hidden="true">
+          <svg id="icon-queued" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <svg id="icon-processing" class="hidden" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <path d="M21 12a9 9 0 1 1-6.36-8.6"/>
+          </svg>
+          <svg id="icon-done" class="hidden" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <svg id="icon-failed" class="hidden" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="6" x2="18" y2="18"/>
+            <line x1="6" y1="18" x2="18" y2="6"/>
+          </svg>
+        </span>
+        <div class="status-text">
+          <p class="status-title"><span id="status-title-lead">Queued.</span> <span id="status-title-rest" class="ok">Waiting to start…</span></p>
+          <p id="status-msg" class="status-msg">Submitting your job…</p>
+        </div>
+        <span id="status-pct" class="status-pct">0%</span>
       </div>
+
       <div class="progress" aria-hidden="true">
         <div id="progress-bar" class="progress-bar" style="width:0%"></div>
       </div>
-      <p id="status-msg" class="status-msg">Waiting to start…</p>
 
       <div id="error-box" class="error-box hidden" role="alert"></div>
 
       <div id="downloads" class="downloads hidden">
         <a id="dl-srt" class="dl-btn hidden" href="#" download>
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 4l-6 6h4v6h4v-6h4l-6-6z" transform="rotate(180 12 11)"/></svg>
-          Download SRT
+          <span class="dl-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </span>
+          <span class="dl-text"><strong>Download SRT</strong><small>Subtitle (.srt)</small></span>
         </a>
         <a id="dl-txt" class="dl-btn hidden" href="#" download>
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 4l-6 6h4v6h4v-6h4l-6-6z" transform="rotate(180 12 11)"/></svg>
-          Download TXT
+          <span class="dl-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="9" y1="13" x2="15" y2="13"/>
+              <line x1="9" y1="17" x2="13" y2="17"/>
+            </svg>
+          </span>
+          <span class="dl-text"><strong>Download TXT</strong><small>Transcript (.txt)</small></span>
         </a>
         <a id="dl-original" class="dl-btn hidden" href="#" download>
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 4l-6 6h4v6h4v-6h4l-6-6z" transform="rotate(180 12 11)"/></svg>
-          <span id="dl-original-label">Download Original Video</span>
+          <span class="dl-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="6" width="14" height="12" rx="2" ry="2"/>
+              <polygon points="22 8 16 12 22 16 22 8"/>
+            </svg>
+          </span>
+          <span class="dl-text"><strong id="dl-original-label">Download Original</strong><small id="dl-original-sub">Full quality (.mp4)</small></span>
         </a>
         <a id="dl-video" class="dl-btn hidden" href="#" download>
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 4l-6 6h4v6h4v-6h4l-6-6z" transform="rotate(180 12 11)"/></svg>
-          Download Video Subtitle
+          <span class="dl-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="14" rx="2"/>
+              <line x1="3" y1="14" x2="21" y2="14"/>
+              <line x1="8" y1="18" x2="16" y2="18"/>
+            </svg>
+          </span>
+          <span class="dl-text"><strong>Download Video</strong><small>Subtitle Burned</small></span>
         </a>
       </div>
     </section>
 
     <section class="features">
       <article class="feature">
-        <div class="feature-icon">⚡</div>
-        <h3>One-paste workflow</h3>
-        <p>Paste a YouTube, TikTok, X, Instagram, or Facebook link — that's it.</p>
+        <div class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round">
+            <polygon points="13 2 3 14 11 14 9 22 21 10 13 10 15 2 13 2"/>
+          </svg>
+        </div>
+        <div>
+          <h3>One-paste workflow</h3>
+          <p>Paste a YouTube, TikTok, X, Instagram, or Facebook link — that's it.</p>
+        </div>
+        <span class="feature-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
       </article>
       <article class="feature">
-        <div class="feature-icon">🎯</div>
-        <h3>Accurate timestamps</h3>
-        <p>Whisper segments power SRT cues that line up with the audio.</p>
+        <div class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+          </svg>
+        </div>
+        <div>
+          <h3>Accurate timestamps</h3>
+          <p>Whisper segments power SRT cues that line up with the audio.</p>
+        </div>
+        <span class="feature-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
       </article>
       <article class="feature">
-        <div class="feature-icon">🇮🇩</div>
-        <h3>Bahasa Indonesia</h3>
-        <p>Every segment translated to Indonesian — falls back gracefully on errors.</p>
+        <div class="feature-icon flag" aria-label="Indonesian flag" role="img"></div>
+        <div>
+          <h3>Bahasa Indonesia</h3>
+          <p>Every segment translated to Indonesian — falls back gracefully on errors.</p>
+        </div>
+        <span class="feature-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </span>
       </article>
     </section>
   </main>
 
   <footer class="footer">
-    <p>Built for creators. Run it on your laptop, your VPS, or behind ngrok.</p>
+    <p>&copy; 2024 {{ app_name }}. All rights reserved.
+      <span class="heart" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align: -2px">
+          <path d="M12 21s-7.2-4.5-9.5-9C0.8 8.4 3 5 6.4 5c1.9 0 3.4 1 4.6 2.4C12.2 6 13.7 5 15.6 5 19 5 21.2 8.4 19.5 12c-2.3 4.5-9.5 9-9.5 9z"/>
+        </svg>
+      </span>
+    </p>
   </footer>
 
   <script src="/static/app.js" defer></script>
