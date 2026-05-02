@@ -13,6 +13,7 @@ import logging
 import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Callable, Optional
 
 from faster_whisper import WhisperModel
 
@@ -61,25 +62,44 @@ def _get_model(name: str) -> WhisperModel:
         return m
 
 
-def transcribe(audio_path: Path, model_name: str | None = None) -> list[Segment]:
+# Type alias: ``progress_cb(seg_end_seconds, total_seconds, segments_so_far)``.
+ProgressCB = Callable[[float, float, int], None]
+
+
+def transcribe(
+    audio_path: Path,
+    model_name: str | None = None,
+    progress_cb: Optional[ProgressCB] = None,
+) -> list[Segment]:
     """Return ordered timestamped segments for the given audio file.
 
     ``model_name`` overrides the default Whisper model size; falls back to the
     one configured via ``SUBLYAI_WHISPER_MODEL`` (or "small").
+
+    If ``progress_cb`` is provided it is invoked once per yielded segment with
+    ``(seg_end_seconds, total_audio_seconds, segments_so_far)`` so a caller
+    can stream progress updates while Whisper iterates over the audio.
+    Exceptions raised by the callback are logged and ignored — they must
+    never block transcription.
     """
 
     name = model_name or config.WHISPER_MODEL
     model = _get_model(name)
-    segments_iter, _info = model.transcribe(
+    segments_iter, info = model.transcribe(
         str(audio_path),
         beam_size=1,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
     )
+    total = float(getattr(info, "duration", 0.0) or 0.0)
     out: list[Segment] = []
     for seg in segments_iter:
         text = (seg.text or "").strip()
-        if not text:
-            continue
-        out.append(Segment(start=float(seg.start), end=float(seg.end), text=text))
+        if text:
+            out.append(Segment(start=float(seg.start), end=float(seg.end), text=text))
+        if progress_cb is not None:
+            try:
+                progress_cb(float(seg.end), total, len(out))
+            except Exception:  # pragma: no cover - never block on UI updates
+                log.exception("transcribe progress_cb raised; ignoring")
     return out

@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import threading
+import time
 import traceback
 from pathlib import Path
 from typing import Literal
@@ -99,6 +100,17 @@ def _validate_target_lang(lang: str | None) -> str:
     if not re.match(r"^[A-Za-z][A-Za-z0-9-]{0,9}$", lang):
         raise HTTPException(status_code=400, detail=f"Invalid target_lang {lang!r}.")
     return lang
+
+
+def _fmt_hms(seconds: float) -> str:
+    """Render ``seconds`` as ``H:MM:SS`` (or ``M:SS`` for short clips)."""
+
+    s = int(round(max(0.0, seconds)))
+    h, rem = divmod(s, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
 
 
 def _set(
@@ -194,13 +206,42 @@ def _process_job(job_id: str) -> None:
         _set(job_id, progress=25, message="Extracting audio…")
         audio_path = extract_audio(media_path, out_dir)
 
-        # 3. Transcribe
+        # 3. Transcribe — emit per-segment progress in the 32..65% range so
+        # the UI doesn't sit at 32% for the entire (potentially long) Whisper
+        # pass. Throttled to one update per ~3s and one progress percent per
+        # change so we don't hammer the JSON state store.
         _set(
             job_id,
             progress=32,
             message=f"AI is creating timestamps with Whisper '{job.whisper_model}'…",
         )
-        segments = transcribe(audio_path, model_name=job.whisper_model)
+
+        last_emit = {"t": 0.0, "pct": 32}
+
+        def _on_seg(seg_end: float, total: float, segs_so_far: int) -> None:
+            if total <= 0:
+                return
+            ratio = max(0.0, min(seg_end / total, 1.0))
+            pct = 32 + int(ratio * (65 - 32))
+            now = time.monotonic()
+            if pct <= last_emit["pct"] and now - last_emit["t"] < 3.0:
+                return
+            last_emit["t"] = now
+            last_emit["pct"] = pct
+            _set(
+                job_id,
+                progress=pct,
+                message=(
+                    f"AI is transcribing… {_fmt_hms(seg_end)} / {_fmt_hms(total)}"
+                    f" ({segs_so_far} segments so far)"
+                ),
+            )
+
+        segments = transcribe(
+            audio_path,
+            model_name=job.whisper_model,
+            progress_cb=_on_seg,
+        )
         if not segments:
             raise RuntimeError("Transcription returned no segments. Is the audio silent?")
         _set(job_id, progress=65, message=f"Transcribed {len(segments)} segments.")
