@@ -1,0 +1,34 @@
+; SublyAI — ngrok tunnel (template)
+;
+; Install:
+;   sudo cp deploy/ngrok-sublyai.service /etc/systemd/system/ngrok-sublyai.service
+;   sudo nano /etc/systemd/system/ngrok-sublyai.service     # edit --url=
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable --now ngrok-sublyai
+;
+; Prerequisites:
+;   1. Install the ngrok agent (https://ngrok.com/download) and run
+;        ngrok config add-authtoken <YOUR_AUTHTOKEN>
+;      so the static-domain reservation can attach.
+;   2. Reserve a free static domain at
+;        https://dashboard.ngrok.com/domains
+;      and paste it into the --url= flag below. Without --url= ngrok will
+;      generate a fresh random URL on every restart, which breaks bookmarks
+;      and PWA installs.
+
+[Unit]
+Description=ngrok HTTPS tunnel for SublyAI (port 8000)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/ngrok http --url=YOUR-RESERVED-DOMAIN.ngrok-free.app 8000 --log=stdout
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

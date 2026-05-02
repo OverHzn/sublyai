@@ -143,11 +143,12 @@ SUBLYAI_WHISPER_COMPUTE_TYPE=int8 # float16 / float32 on GPU
 
 Smaller VPS? Use `base` or `tiny`. Beefy box? Try `medium`.
 
-### Behind a reverse proxy / ngrok
+### Behind a reverse proxy
 
 The container only listens on port 8000 inside Docker; the compose file maps
-that to the host's `:8000`. Point your nginx/Caddy/Traefik at `127.0.0.1:8000`,
-or simply run `ngrok http 8000` on the host.
+that to the host's `:8000`. Point your nginx/Caddy/Traefik at `127.0.0.1:8000`.
+For a one-command HTTPS tunnel without owning a domain, see the
+[ngrok section](#expose-publicly-with-ngrok) below.
 
 ---
 
@@ -175,14 +176,79 @@ If your VPS has a public IPv4 address you can bind directly:
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-### Behind NAT — use ngrok
+---
+
+## Expose publicly with ngrok
+
+The fastest way to make SublyAI reachable from the public internet without
+owning a domain or configuring DNS. ngrok's free tier gives you HTTPS, one
+reserved static URL, and ~120 requests/minute — plenty for personal use.
+
+### 1. Sign up and get your authtoken
+
+Create a free account at <https://dashboard.ngrok.com/signup> and copy the
+token from <https://dashboard.ngrok.com/get-started/your-authtoken>.
+
+### 2. Install the agent on your VPS
 
 ```bash
-ngrok http 8000
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+  | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
+  | sudo tee /etc/apt/sources.list.d/ngrok.list
+sudo apt update && sudo apt install -y ngrok
+ngrok config add-authtoken YOUR_AUTHTOKEN
 ```
 
-Open the `https://<random>.ngrok-free.app` URL ngrok prints. SublyAI works
-unchanged: there are no hardcoded domains.
+### 3. Reserve a static domain (optional but recommended)
+
+The free tier includes one reserved domain so your URL doesn't change on
+every restart. Click **+ New Domain** at
+<https://dashboard.ngrok.com/domains> and copy the result, e.g.
+`kucing-ganteng-1234.ngrok-free.app`.
+
+### 4. Test the tunnel
+
+```bash
+# Make sure SublyAI is running first
+docker compose up -d
+
+# Then start the tunnel
+ngrok http --url=kucing-ganteng-1234.ngrok-free.app 8000
+```
+
+Open the URL in any browser, on any network — SublyAI loads with HTTPS and
+no further config (it has no hardcoded domains). Press Ctrl+C to stop.
+
+### 5. Run ngrok as a systemd service
+
+So the tunnel survives reboots and crashes, install the bundled unit:
+
+```bash
+sudo cp deploy/ngrok-sublyai.service /etc/systemd/system/ngrok-sublyai.service
+sudo nano /etc/systemd/system/ngrok-sublyai.service       # edit --url=...
+sudo systemctl daemon-reload
+sudo systemctl enable --now ngrok-sublyai
+sudo systemctl status ngrok-sublyai                       # should be active (running)
+sudo journalctl -u ngrok-sublyai -f                       # live logs
+```
+
+If you also enable `sudo systemctl enable docker`, the entire stack
+(Docker → SublyAI container → ngrok tunnel) restarts automatically when
+the VPS reboots.
+
+### Free-tier caveats
+
+- **Browser warning page.** First-time visitors see a "Visit Site" interstitial.
+  Upgrade to ngrok Personal ($8/month) to remove it, or switch to Cloudflare
+  Tunnel which has no warning page.
+- **One simultaneous tunnel** and 120 req/min — fine for one or two users.
+- **Bandwidth is unmetered but rate limited** — fast enough for SublyAI but
+  large multi-GB media downloads from `/download/{job_id}/video` may feel
+  slower than direct LAN.
+
+When you outgrow ngrok, the [systemd + nginx/Caddy](#run-on-a-vps-with-systemd--nginxcaddy)
+section below shows how to host on your own domain with HTTPS.
 
 ---
 
@@ -193,6 +259,7 @@ The repo ships ready-to-edit templates under `deploy/`:
 - [`deploy/sublyai.service`](deploy/sublyai.service) — systemd unit
 - [`deploy/nginx.conf.example`](deploy/nginx.conf.example) — nginx reverse proxy with HTTPS hooks for certbot
 - [`deploy/Caddyfile.example`](deploy/Caddyfile.example) — Caddy alternative (auto HTTPS)
+- [`deploy/ngrok-sublyai.service`](deploy/ngrok-sublyai.service) — auto-start ngrok tunnel (no domain required, see [ngrok section](#expose-publicly-with-ngrok))
 
 Quick install (Ubuntu, no Docker):
 
