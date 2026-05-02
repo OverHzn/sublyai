@@ -122,6 +122,14 @@ container rebuilds and are inspectable from the host:
 | `./jobs`      | `/app/jobs`      | `<job_id>.json` status files |
 | named volume `whisper_cache` | `/home/app/.cache/huggingface` | Whisper model weights (downloaded once, ~500 MB for `small`) |
 
+The container starts as `root` so the entrypoint can `chown` the bind-mounted
+directories to UID 1000 on first launch (otherwise a fresh `git clone` as root
+would leave them root-owned and unwritable to the in-container user). It then
+drops privileges via `gosu` and runs uvicorn as a non-root `app` user. If you
+mount filesystems where `chown` is not allowed (CIFS, some NFS setups), set
+`SUBLYAI_RUN_AS_ROOT=1` in your environment to keep the container running as
+root.
+
 ### Tuning Whisper
 
 Override these via environment variables (in your shell, a `.env` file next to
