@@ -13,6 +13,8 @@ venv/
 downloads/*
 outputs/*
 jobs/*
+config/*
 !downloads/.gitkeep
 !outputs/.gitkeep
 !jobs/.gitkeep
+!config/.gitkeep

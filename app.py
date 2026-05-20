@@ -24,6 +24,7 @@ import re
 import threading
 import time
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -41,6 +42,7 @@ from fastapi.templating import Jinja2Templates
 
 import config
 from utils import jobs as jobs_mod
+from utils import llm as llm_mod
 from utils.downloader import DownloadError, download
 from utils.jobs import Job, JobFiles
 from utils.media import BurnStyle, FFmpegError, FFmpegMissing, burn_subtitle, extract_audio
@@ -342,6 +344,108 @@ async def index(request: Request) -> HTMLResponse:
             "style_defaults": config.STYLE_DEFAULTS,
         },
     )
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request) -> HTMLResponse:
+    cfg = llm_mod.load_config()
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "app_name": config.APP_NAME,
+            "llm_config": cfg.to_public(),
+        },
+    )
+
+
+@app.get("/api/llm/config")
+async def llm_config_get() -> dict:
+    return llm_mod.load_config().to_public()
+
+
+@app.post("/api/llm/test")
+async def llm_test(payload: dict) -> dict:
+    """Validate Base URL + API key by listing models.
+
+    Always returns ``200`` with ``{ok, models, error}`` so the client can
+    treat connection failures as data, not exceptions. If ``api_key`` is
+    omitted the saved key (if any) is used so the user can re-test without
+    re-typing.
+    """
+
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "Invalid request body.", "models": []}
+
+    base_url = str(payload.get("base_url") or "").strip()
+    api_key = str(payload.get("api_key") or "").strip()
+
+    if not base_url:
+        return {"ok": False, "error": "Base URL is required.", "models": []}
+
+    if not api_key:
+        api_key = llm_mod.load_config().api_key
+        if not api_key:
+            return {"ok": False, "error": "API key is required.", "models": []}
+
+    try:
+        models = await llm_mod.list_models(base_url, api_key)
+    except llm_mod.LLMError as e:
+        return {"ok": False, "error": str(e), "models": []}
+    return {"ok": True, "error": None, "models": models}
+
+
+@app.put("/api/llm/config")
+async def llm_config_put(payload: dict) -> dict:
+    """Validate + persist LLM configuration.
+
+    Body: ``{base_url, api_key?, model}``. The API key is optional only when
+    a saved key already exists (so the user can change model/base without
+    re-entering it). The endpoint validates by listing models before writing
+    to disk, so an unreachable endpoint or wrong key never gets persisted.
+    """
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid request body.")
+
+    base_url = llm_mod.normalize_base_url(str(payload.get("base_url") or ""))
+    api_key = str(payload.get("api_key") or "").strip()
+    model = str(payload.get("model") or "").strip()
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Base URL is required.")
+    if not model:
+        raise HTTPException(status_code=400, detail="Model is required.")
+
+    saved = llm_mod.load_config()
+    if not api_key:
+        api_key = saved.api_key
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API key is required.")
+
+    try:
+        models = await llm_mod.list_models(base_url, api_key)
+    except llm_mod.LLMError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if model not in models:
+        # Some providers don't list every model in /models (custom fine-tunes,
+        # etc.). We honour the user's choice but log it for debugging.
+        log.warning(
+            "LLM config saved with model %r not in detected list (%d models)",
+            model,
+            len(models),
+        )
+
+    cfg = llm_mod.LLMConfig(
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        updated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+    llm_mod.save_config(cfg)
+    log.info("LLM config saved: base=%s model=%s", base_url, model)
+    return {"ok": True, "config": cfg.to_public()}
 
 
 def _start_worker(job_id: str) -> None:

@@ -15,9 +15,15 @@ BASE_DIR = Path(__file__).resolve().parent
 DOWNLOADS_DIR = Path(os.getenv("SUBLYAI_DOWNLOADS_DIR", BASE_DIR / "downloads"))
 OUTPUTS_DIR = Path(os.getenv("SUBLYAI_OUTPUTS_DIR", BASE_DIR / "outputs"))
 JOBS_DIR = Path(os.getenv("SUBLYAI_JOBS_DIR", BASE_DIR / "jobs"))
+CONFIG_DIR = Path(os.getenv("SUBLYAI_CONFIG_DIR", BASE_DIR / "config"))
 
-for _d in (DOWNLOADS_DIR, OUTPUTS_DIR, JOBS_DIR):
+for _d in (DOWNLOADS_DIR, OUTPUTS_DIR, JOBS_DIR, CONFIG_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+# LLM (OpenAI-compatible) configuration is persisted here. The file is created
+# on first save with mode 0600 so the API key isn't world-readable.
+LLM_CONFIG_FILE = CONFIG_DIR / "llm.json"
+LLM_REQUEST_TIMEOUT = float(os.getenv("SUBLYAI_LLM_TIMEOUT", "15"))
 
 # Branding
 APP_NAME = "SublyAI"

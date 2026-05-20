@@ -5,6 +5,7 @@
 #   /app/downloads — yt-dlp output (mount a host volume here)
 #   /app/outputs   — generated SRT/TXT/burned MP4 (mount a host volume here)
 #   /app/jobs      — per-job JSON state files (mount a host volume here)
+#   /app/config    — app-level config (LLM credentials, etc.); mount a host volume
 #   /home/app/.cache/huggingface — whisper model cache (mount a named volume)
 #
 # The container starts as root so the entrypoint can fix ownership of
@@ -43,7 +44,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the rest of the app and ensure the runtime dirs exist.
 COPY . /app
-RUN mkdir -p /app/downloads /app/outputs /app/jobs \
+RUN mkdir -p /app/downloads /app/outputs /app/jobs /app/config \
               /home/app/.cache/huggingface/hub \
  && chown -R app:app /app /home/app \
  && chmod +x /app/docker-entrypoint.sh

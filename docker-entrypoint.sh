@@ -31,6 +31,7 @@ if [[ "$(id -u)" == "0" ]]; then
     fix_dir /app/downloads
     fix_dir /app/outputs
     fix_dir /app/jobs
+    fix_dir /app/config
     fix_dir /home/app/.cache
 
     if [[ "${SUBLYAI_RUN_AS_ROOT:-0}" == "1" ]]; then
