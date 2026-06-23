@@ -3,6 +3,9 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+desktop/node_modules/
+desktop/dist/
+release/
 .env
 .env.*
 .idea/

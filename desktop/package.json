@@ -1,0 +1,69 @@
+{
+  "name": "sublyai-desktop",
+  "version": "1.0.0",
+  "description": "SublyAI desktop shell",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build": "electron-builder"
+  },
+  "author": "OverHzn",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.sublyai.desktop",
+    "productName": "SublyAI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "sublyai",
+        "filter": [
+          "app.py",
+          "config.py",
+          "server_boot.py",
+          "run_server.py",
+          "requirements.txt",
+          "utils/**/*",
+          "templates/**/*",
+          "static/**/*",
+          "downloads/.gitkeep",
+          "outputs/.gitkeep",
+          "jobs/.gitkeep",
+          "config/.gitkeep"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "SublyAI"
+    }
+  }
+}

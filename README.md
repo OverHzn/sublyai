@@ -300,7 +300,33 @@ Override config (Whisper model, target language, etc.) by dropping a
 
 ---
 
-## Run on Windows (local)
+## Desktop App (Windows) — tanpa browser
+
+SublyAI bisa dibuka sebagai **aplikasi desktop** (jendela sendiri, bukan tab browser).
+
+**Cara tercepat:**
+
+1. Double-click **`setup-app.bat`** (sekali saja — setup Python + Electron)
+2. Double-click **`start-app.bat`** — app terbuka langsung
+
+**Build installer (.exe):**
+
+```powershell
+.\build-app.bat
+# hasil di desktop\dist\SublyAI Setup x.x.x.exe
+```
+
+> Setelah install, pastikan folder `.venv` ada di project root (jalankan
+> `setup-app.bat` sekali). Whisper model (~500 MB) di-download otomatis saat
+> job pertama.
+
+---
+
+## Run on Windows (local — via browser)
+
+**Double-click `start.bat`** (auto setup venv + buka browser).
+
+Atau manual:
 
 1. Install Python 3.10+.
 2. Install ffmpeg and make sure `ffmpeg` is on your `PATH`
@@ -311,10 +337,16 @@ Override config (Whisper model, target language, etc.) by dropping a
    python -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
-   uvicorn app:app --host 127.0.0.1 --port 8000
+   python run_local.py
    ```
 
-4. Open <http://127.0.0.1:8000>.
+   `run_local.py` menjalankan server di `127.0.0.1:8000` dan membuka browser
+   otomatis. Alternatif: `.\start.ps1` atau `uvicorn app:app --host 127.0.0.1 --port 8000`.
+
+4. Buka <http://127.0.0.1:8000> kalau browser tidak terbuka sendiri.
+
+> **Tip:** SublyAI bisa di-install sebagai PWA dari browser (Chrome/Edge →
+> menu → *Install app*) supaya terasa seperti desktop app.
 
 ---
 
