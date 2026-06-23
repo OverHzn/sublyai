@@ -2,6 +2,8 @@
 
 **Paste link. Generate Indonesian subtitles instantly.**
 
+**Repo:** https://github.com/OverHzn/sublyai
+
 SublyAI is a self-hosted web app that turns any public video URL — or a
 local file you drop into the browser — into:
 
@@ -40,6 +42,17 @@ It runs on Windows, Ubuntu (or any Linux VPS), and works behind an
    `video_subtitle.mp4` when **Burn subtitle to video** is checked.
 7. The web UI surfaces download buttons for everything that was produced.
 
+### Pipeline dengan DubClean
+
+Untuk produksi konten short video (drama China → Indonesia):
+
+```
+SublyAI  →  transcribe + translate → download subtitle_id.srt
+DubClean →  blur watermark + burn subtitle styled + add/replace audio → {nama}_clean.mp4
+```
+
+Download SRT dari folder `outputs/<job_id>/` di SublyAI, lalu import ke [DubClean](https://github.com/OverHzn/DubClean) untuk finishing sebelum upload.
+
 ---
 
 ## Quality presets
@@ -68,7 +81,21 @@ Defaults are kept light to avoid huge downloads:
 sublyai/
 ├─ app.py                # FastAPI app + background worker
 ├─ config.py             # paths, quality presets, model config
+├─ run_local.py          # local dev: server + auto-open browser
+├─ run_server.py         # headless server (dipakai Electron shell)
+├─ server_boot.py        # port finder + uvicorn bootstrap
 ├─ requirements.txt
+├─ start.bat             # setup venv + jalankan di browser
+├─ start.ps1             # PowerShell launcher
+├─ stop.bat              # hentikan proses di port 8000–8009
+├─ setup-app.bat         # setup Python venv + Electron (sekali)
+├─ start-app.bat         # buka sebagai desktop app (dev)
+├─ build-app.bat         # build installer + paket portable lengkap
+├─ package-portable.bat  # bundle .venv + app → release/SublyAI-Portable/
+├─ desktop/
+│  ├─ main.js            # Electron shell, spawn Python server
+│  ├─ preload.js
+│  └─ package.json       # electron-builder config
 ├─ utils/
 │  ├─ downloader.py      # yt-dlp wrapper
 │  ├─ media.py           # ffmpeg audio extraction + subtitle burn-in
@@ -82,7 +109,9 @@ sublyai/
 │  └─ app.js             # form submit + 2.5s status polling
 ├─ downloads/            # downloaded media per job_id
 ├─ outputs/              # audio.wav, subtitle_id.srt, transcript_id.txt, video_subtitle.mp4
-└─ jobs/                 # <job_id>.json status files
+├─ jobs/                 # <job_id>.json status files
+└─ release/              # hasil package-portable.bat (tidak di-commit)
+   └─ SublyAI-Portable/  # paket siap distribusi (~580 MB, termasuk .venv)
 ```
 
 ---
@@ -302,23 +331,47 @@ Override config (Whisper model, target language, etc.) by dropping a
 
 ## Desktop App (Windows) — tanpa browser
 
-SublyAI bisa dibuka sebagai **aplikasi desktop** (jendela sendiri, bukan tab browser).
+SublyAI bisa dibuka sebagai **aplikasi desktop** (jendela Electron sendiri, bukan tab browser). Shell Electron menjalankan server Python di background lalu memuat UI di `http://127.0.0.1:<port>`.
 
-**Cara tercepat:**
+### Cara pakai (dari source)
 
-1. Double-click **`setup-app.bat`** (sekali saja — setup Python + Electron)
-2. Double-click **`start-app.bat`** — app terbuka langsung
+| Langkah | File | Keterangan |
+| --- | --- | --- |
+| Setup sekali | `setup-app.bat` | Buat `.venv`, install deps Python + Electron |
+| Jalankan app | `start-app.bat` | Buka SublyAI sebagai desktop window |
+| Stop server | `stop.bat` | Matikan proses di port 8000–8009 |
 
-**Build installer (.exe):**
+**Requirements:** Python 3.10+, Node.js 18+, ffmpeg di PATH.
+
+### Build installer & portable
 
 ```powershell
 .\build-app.bat
-# hasil di desktop\dist\SublyAI Setup x.x.x.exe
 ```
 
-> Setelah install, pastikan folder `.venv` ada di project root (jalankan
-> `setup-app.bat` sekali). Whisper model (~500 MB) di-download otomatis saat
-> job pertama.
+Script ini menjalankan `electron-builder` lalu otomatis memanggil `package-portable.bat`.
+
+| File | Ukuran | Kegunaan |
+| --- | --- | --- |
+| `desktop\dist\SublyAI Setup 1.0.0.exe` | ~80 MB | Installer NSIS — **butuh** `.venv` di folder install |
+| `desktop\dist\SublyAI 1.0.0.exe` | ~80 MB | Portable Electron — **butuh** `.venv` di folder yang sama |
+| `release\SublyAI-Portable\SublyAI.exe` | ~580 MB | **Rekomendasi distribusi** — app + `.venv` lengkap, bisa copy/pindah folder |
+
+> **Penting:** Installer NSIS **tidak** self-contained. Setelah install, jalankan `setup-app.bat` sekali di folder instalasi (atau copy `.venv` manual). Untuk share ke orang lain tanpa setup, pakai folder `release\SublyAI-Portable\` — double-click `SublyAI.exe` atau `Jalankan SublyAI.bat`.
+
+Whisper model (~500 MB untuk `small`) di-download otomatis saat job pertama, lalu di-cache.
+
+### Troubleshooting (desktop)
+
+| Masalah | Solusi |
+| --- | --- |
+| Build gagal (symlink / privilege) | Sudah di-set `signAndEditExecutable: false` di `desktop/package.json`; jalankan `set CSC_IDENTITY_AUTO_DISCOVERY=false` sebelum build |
+| App terbuka tapi blank / error Python | Pastikan `.venv` ada di root project (atau di `release\SublyAI-Portable\`) |
+| Port 8000 sudah dipakai | Jalankan `stop.bat`, lalu buka app lagi — server auto-cari port 8000–8009 |
+| `ffmpeg` tidak ditemukan | Install ffmpeg dan pastikan ada di PATH (`ffmpeg -version`) |
+| Halaman LLM Settings | UI tersedia, tapi pipeline terjemahan masih memakai `deep-translator` (Google) — LLM belum terintegrasi |
+
+> Folder `desktop\dist\` dan `release\` tidak di-commit ke git — hasil build tetap lokal.
 
 ---
 
@@ -452,3 +505,9 @@ The first job will download the Whisper model weights (a few hundred MB for
 - Each job is isolated under its own `job_id` directory, and a worker
   exception is converted into a clean `failed` status so one bad URL never
   takes the server down.
+
+---
+
+## License
+
+MIT — Owner: OverHzn (0xHulk)
