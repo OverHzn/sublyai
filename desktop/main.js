@@ -65,6 +65,7 @@ function startPythonServer(root, pythonExe) {
       ...process.env,
       SUBLYAI_NO_BROWSER: '1',
       PYTHONUNBUFFERED: '1',
+      PYTHONUTF8: '1',
       SUBLYAI_DOWNLOADS_DIR: dataDirs.downloads,
       SUBLYAI_OUTPUTS_DIR: dataDirs.outputs,
       SUBLYAI_JOBS_DIR: dataDirs.jobs,

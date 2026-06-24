@@ -116,7 +116,10 @@ def save_job(job: Job) -> None:
     path = job_status_path(job.job_id)
     tmp = path.with_suffix(".json.tmp")
     with _lock_for(job.job_id):
-        tmp.write_text(json.dumps(job.to_dict(), ensure_ascii=False, indent=2))
+        tmp.write_text(
+            json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         tmp.replace(path)
 
 
@@ -125,7 +128,7 @@ def load_job(job_id: str) -> Job | None:
     if not path.exists():
         return None
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
     files_data = data.pop("files", {}) or {}

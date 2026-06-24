@@ -42,7 +42,22 @@ def pick_port() -> int:
     sys.exit(1)
 
 
+def _configure_stdio_utf8() -> None:
+    """Windows defaults to cp1252; force UTF-8 so emoji in logs/paths don't crash."""
+
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
 def run_server(*, open_browser: bool = False) -> None:
+    _configure_stdio_utf8()
     check_deps()
     port = pick_port()
     url = f"http://{HOST}:{port}"
