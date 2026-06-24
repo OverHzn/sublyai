@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -693,4 +694,8 @@ async def download_artifact(job_id: str, kind: KindT) -> FileResponse:
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"ok": True, "app": config.APP_NAME}
+    return {
+        "ok": True,
+        "app": config.APP_NAME,
+        "ffmpeg": "ok" if shutil.which("ffmpeg") else "missing",
+    }

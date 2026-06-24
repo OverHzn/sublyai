@@ -6,6 +6,7 @@ venv/
 desktop/node_modules/
 desktop/dist/
 release/
+mcps/
 .env
 .env.*
 .idea/

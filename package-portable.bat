@@ -30,11 +30,12 @@ xcopy "%SRC%\*" "%OUT%\" /E /I /H /Y /Q >nul
 echo [2/3] Copy Python venv ^(bisa beberapa menit^)...
 xcopy ".venv" "%OUT%\.venv\" /E /I /H /Y /Q >nul
 
-echo [3/3] Buat folder data...
-mkdir "%OUT%\downloads" 2>nul
-mkdir "%OUT%\outputs" 2>nul
-mkdir "%OUT%\jobs" 2>nul
-mkdir "%OUT%\config" 2>nul
+echo [3/3] Tulis catatan data app...
+(
+echo Data job ^(downloads, outputs, jobs, config^) disimpan di:
+echo   %%LOCALAPPDATA%%\SublyAI
+echo Bukan di folder portable ini.
+) > "%OUT%\DATA-LOCATION.txt"
 
 (
 echo @echo off

@@ -9,7 +9,7 @@ echo.
 
 if not exist ".venv\Scripts\python.exe" (
   echo [SETUP] Virtual environment belum ada. Menjalankan setup...
-  call "%~dp0start.bat"
+  call "%~dp0setup-app.bat" --no-pause
   if not exist ".venv\Scripts\python.exe" exit /b 1
 )
 

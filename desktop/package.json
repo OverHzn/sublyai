@@ -22,8 +22,17 @@
     },
     "files": [
       "main.js",
-      "preload.js",
       "icon.png"
+    ],
+    "extraFiles": [
+      {
+        "from": "../setup-app.bat",
+        "to": "."
+      },
+      {
+        "from": "../stop.bat",
+        "to": "."
+      }
     ],
     "extraResources": [
       {

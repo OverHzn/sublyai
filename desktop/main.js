@@ -6,21 +6,34 @@ const http = require('http');
 
 let mainWindow = null;
 let pythonProc = null;
-let serverPort = 8000;
 
 app.setPath('userData', path.join(app.getPath('appData'), 'SublyAI'));
 
 function getProjectRoot() {
   if (app.isPackaged) {
-    // extraResources → resources/sublyai/
     const bundled = path.join(process.resourcesPath, 'sublyai');
     if (fs.existsSync(path.join(bundled, 'app.py'))) return bundled;
-    // portable: python source sejajar dengan exe
     const portable = path.join(path.dirname(process.execPath), 'sublyai');
     if (fs.existsSync(path.join(portable, 'app.py'))) return portable;
     return path.join(path.dirname(process.execPath));
   }
   return path.join(__dirname, '..');
+}
+
+function getUserDataDirs() {
+  const base = app.getPath('userData');
+  return {
+    downloads: path.join(base, 'downloads'),
+    outputs: path.join(base, 'outputs'),
+    jobs: path.join(base, 'jobs'),
+    config: path.join(base, 'config'),
+  };
+}
+
+function ensureDataDirs(dirs) {
+  for (const dir of Object.values(dirs)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
 function getPythonExe(root) {
@@ -35,17 +48,33 @@ function getPythonExe(root) {
   return null;
 }
 
+function detectStartupError(text) {
+  if (/ffmpeg tidak ditemukan|ffmpeg is not installed/i.test(text)) {
+    return 'ffmpeg tidak ditemukan di PATH. Install ffmpeg lalu jalankan ulang.';
+  }
+  return null;
+}
+
 function startPythonServer(root, pythonExe) {
   return new Promise((resolve, reject) => {
     const script = path.join(root, 'run_server.py');
+    const dataDirs = getUserDataDirs();
+    ensureDataDirs(dataDirs);
+
     const env = {
       ...process.env,
       SUBLYAI_NO_BROWSER: '1',
       PYTHONUNBUFFERED: '1',
+      SUBLYAI_DOWNLOADS_DIR: dataDirs.downloads,
+      SUBLYAI_OUTPUTS_DIR: dataDirs.outputs,
+      SUBLYAI_JOBS_DIR: dataDirs.jobs,
+      SUBLYAI_CONFIG_DIR: dataDirs.config,
     };
 
     let portKnown = false;
     let settled = false;
+    let stdoutBuf = '';
+    let stderrBuf = '';
 
     pythonProc = spawn(pythonExe, [script], {
       cwd: root,
@@ -62,7 +91,6 @@ function startPythonServer(root, pythonExe) {
     const onPort = async (port) => {
       if (portKnown) return;
       portKnown = true;
-      serverPort = port;
       try {
         await waitForServer(port);
         if (!settled) {
@@ -74,31 +102,47 @@ function startPythonServer(root, pythonExe) {
       }
     };
 
+    const inspectOutput = (text) => {
+      const startupError = detectStartupError(text);
+      if (startupError) fail(new Error(startupError));
+    };
+
     pythonProc.stdout.on('data', (chunk) => {
       const text = chunk.toString();
       process.stdout.write(text);
-      const match = text.match(/SUBLYAI_PORT=(\d+)/);
+      stdoutBuf += text;
+      inspectOutput(stdoutBuf);
+      const match = stdoutBuf.match(/SUBLYAI_PORT=(\d+)/);
       if (match) onPort(parseInt(match[1], 10));
     });
 
     pythonProc.stderr.on('data', (chunk) => {
-      process.stderr.write(chunk.toString());
+      const text = chunk.toString();
+      process.stderr.write(text);
+      stderrBuf += text;
+      inspectOutput(stderrBuf);
     });
 
     pythonProc.on('exit', (code) => {
       if (code !== 0 && code !== null) {
-        if (!settled) fail(new Error(`Python server exit code ${code}`));
+        const tail = (stderrBuf || stdoutBuf).trim().slice(-400);
+        const detail = tail ? `\n\n${tail}` : '';
+        if (!settled) {
+          fail(new Error(`Python server berhenti (code ${code}). Cek ffmpeg & .venv sudah terinstall.${detail}`));
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           dialog.showErrorBox(
             'SublyAI Server Error',
-            `Python server berhenti (code ${code}).\nCek ffmpeg & .venv sudah terinstall.`
+            `Python server berhenti (code ${code}).\nCek ffmpeg & .venv sudah terinstall.${detail}`
           );
         }
       }
     });
 
     setTimeout(() => {
-      if (!portKnown) fail(new Error('Server tidak mengirim port. Cek .venv & dependencies.'));
+      if (!portKnown) {
+        fail(new Error('Server tidak mengirim port. Cek .venv & dependencies.'));
+      }
     }, 90000);
   });
 }
@@ -108,8 +152,26 @@ function waitForServer(port, maxAttempts = 120) {
     let attempts = 0;
     const tryOnce = () => {
       const req = http.get(`http://127.0.0.1:${port}/healthz`, (res) => {
-        if (res.statusCode === 200) resolve();
-        else retry();
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk.toString();
+        });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            retry();
+            return;
+          }
+          try {
+            const payload = JSON.parse(body);
+            if (payload.ffmpeg === 'missing') {
+              reject(new Error('ffmpeg tidak ditemukan di PATH. Install ffmpeg lalu jalankan ulang.'));
+              return;
+            }
+          } catch (_) {
+            // Legacy healthz without ffmpeg field — treat 200 as ready.
+          }
+          resolve();
+        });
       });
       req.on('error', retry);
       req.setTimeout(2000, () => {
@@ -134,12 +196,11 @@ function createWindow(port) {
     height: 860,
     minWidth: 960,
     minHeight: 640,
-    title: 'SublyAI',
+    title: `SublyAI — :${port}`,
     backgroundColor: '#020807',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -163,8 +224,8 @@ async function boot() {
 
   if (!pythonExe) {
     const setupHint = app.isPackaged
-      ? 'Jalankan setup-app.bat di folder install dulu.'
-      : 'Jalankan start.bat sekali untuk setup .venv.';
+      ? 'Jalankan setup-app.bat di folder instalasi dulu.'
+      : 'Jalankan setup-app.bat sekali untuk setup .venv.';
     dialog.showErrorBox(
       'Python tidak ditemukan',
       `Virtual environment (.venv) belum ada.\n\n${setupHint}`

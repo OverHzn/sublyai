@@ -35,7 +35,7 @@ if not exist ".venv\Scripts\python.exe" (
   echo.
 )
 
-echo Menjalankan SublyAI di http://127.0.0.1:8000
+echo Menjalankan SublyAI di http://127.0.0.1 ^(port 8000-8009, dipilih otomatis^)
 echo Browser akan terbuka otomatis. Tutup jendela ini untuk stop server.
 echo.
 

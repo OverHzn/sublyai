@@ -367,6 +367,7 @@ Whisper model (~500 MB untuk `small`) di-download otomatis saat job pertama, lal
 | --- | --- |
 | Build gagal (symlink / privilege) | Sudah di-set `signAndEditExecutable: false` di `desktop/package.json`; jalankan `set CSC_IDENTITY_AUTO_DISCOVERY=false` sebelum build |
 | App terbuka tapi blank / error Python | Pastikan `.venv` ada di root project (atau di `release\SublyAI-Portable\`) |
+| Data job tidak muncul di folder portable | Normal — desktop app menyimpan job di `%LOCALAPPDATA%\SublyAI` |
 | Port 8000 sudah dipakai | Jalankan `stop.bat`, lalu buka app lagi — server auto-cari port 8000–8009 |
 | `ffmpeg` tidak ditemukan | Install ffmpeg dan pastikan ada di PATH (`ffmpeg -version`) |
 | Halaman LLM Settings | UI tersedia, tapi pipeline terjemahan masih memakai `deep-translator` (Google) — LLM belum terintegrasi |

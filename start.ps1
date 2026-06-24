@@ -24,7 +24,7 @@ if (-not (Test-Path $python)) {
     Write-Host ""
 }
 
-Write-Host "Menjalankan SublyAI di http://127.0.0.1:8000"
+Write-Host "Menjalankan SublyAI di http://127.0.0.1 (port 8000-8009, dipilih otomatis)"
 Write-Host "Tekan Ctrl+C untuk stop."
 Write-Host ""
 

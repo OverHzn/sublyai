@@ -22,8 +22,7 @@ cd ..
 
 echo.
 echo [BONUS] Packaging portable lengkap ^(.venv included^)...
-cd ..
-call package-portable.bat
+call "%~dp0package-portable.bat"
 
 echo.
 echo === HASIL BUILD ===
