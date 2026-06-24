@@ -56,13 +56,17 @@ def download(
     def _hook(d: dict) -> None:
         if progress_callback is None:
             return
-        if d.get("status") == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-            done = d.get("downloaded_bytes") or 0
-            pct = int(done * 100 / total) if total else 0
-            progress_callback(pct, "Starting media download…")
-        elif d.get("status") == "finished":
-            progress_callback(100, "Media downloaded successfully…")
+        try:
+            if d.get("status") == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+                done = d.get("downloaded_bytes") or 0
+                pct = int(done * 100 / total) if total else 0
+                progress_callback(pct, "Starting media download…")
+            elif d.get("status") == "finished":
+                progress_callback(100, "Media downloaded successfully…")
+        except Exception:
+            # Progress bookkeeping must never abort the actual media download.
+            log.debug("progress callback failed", exc_info=True)
 
     ydl_opts: dict = {
         "format": fmt,

@@ -8,13 +8,20 @@ single source of truth that the API hands back to the browser.
 from __future__ import annotations
 
 import json
+import os
 import threading
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 import config
+
+# Windows denies os.replace when another handle has the destination open
+# (browser status polling, antivirus, etc.). Retry briefly before failing.
+_ATOMIC_REPLACE_RETRIES = 12
+_ATOMIC_REPLACE_DELAY = 0.03
 
 _JOB_LOCKS: dict[str, threading.RLock] = {}
 _LOCKS_GUARD = threading.Lock()
@@ -29,6 +36,47 @@ def _lock_for(job_id: str) -> threading.RLock:
             lock = threading.RLock()
             _JOB_LOCKS[job_id] = lock
         return lock
+
+
+def _is_transient_io_error(exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    if isinstance(exc, OSError):
+        # 5 = access denied, 32 = sharing violation (Windows)
+        return getattr(exc, "winerror", None) in (5, 32)
+    return False
+
+
+def _atomic_replace(src: Path, dest: Path) -> None:
+    """Replace ``dest`` with ``src``, retrying transient Windows lock errors."""
+
+    last_err: BaseException | None = None
+    for attempt in range(_ATOMIC_REPLACE_RETRIES):
+        try:
+            os.replace(src, dest)
+            return
+        except OSError as exc:
+            if not _is_transient_io_error(exc):
+                raise
+            last_err = exc
+            time.sleep(_ATOMIC_REPLACE_DELAY * (1.4**attempt))
+    if last_err is not None:
+        raise last_err
+
+
+def _read_text_with_retry(path: Path) -> str:
+    last_err: BaseException | None = None
+    for attempt in range(_ATOMIC_REPLACE_RETRIES):
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as exc:
+            if not _is_transient_io_error(exc):
+                raise
+            last_err = exc
+            time.sleep(_ATOMIC_REPLACE_DELAY * (1.4**attempt))
+    if last_err is not None:
+        raise last_err
+    raise OSError(f"Unable to read {path}")
 
 
 @dataclass
@@ -112,25 +160,7 @@ def create_job(
     return job
 
 
-def save_job(job: Job) -> None:
-    path = job_status_path(job.job_id)
-    tmp = path.with_suffix(".json.tmp")
-    with _lock_for(job.job_id):
-        tmp.write_text(
-            json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
-
-
-def load_job(job_id: str) -> Job | None:
-    path = job_status_path(job_id)
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
+def _parse_job_payload(data: dict[str, Any]) -> Job:
     files_data = data.pop("files", {}) or {}
     files = JobFiles(**{k: files_data.get(k) for k in JobFiles.__dataclass_fields__})
 
@@ -142,6 +172,35 @@ def load_job(job_id: str) -> Job | None:
     data.setdefault("style", {})
 
     return Job(files=files, **data)
+
+
+def _load_job_unlocked(job_id: str) -> Job | None:
+    path = job_status_path(job_id)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(_read_text_with_retry(path))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return _parse_job_payload(data)
+
+
+def save_job(job: Job) -> None:
+    path = job_status_path(job.job_id)
+    tmp = path.with_suffix(".json.tmp")
+    with _lock_for(job.job_id):
+        tmp.write_text(
+            json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        _atomic_replace(tmp, path)
+
+
+def load_job(job_id: str) -> Job | None:
+    with _lock_for(job_id):
+        return _load_job_unlocked(job_id)
 
 
 def update_job(
@@ -157,7 +216,7 @@ def update_job(
     """Atomically update a subset of fields on the on-disk job record."""
 
     with _lock_for(job_id):
-        job = load_job(job_id)
+        job = _load_job_unlocked(job_id)
         if job is None:
             return None
         if status is not None:

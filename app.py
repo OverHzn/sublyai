@@ -187,16 +187,31 @@ def _process_job(job_id: str) -> None:
             _set(job_id, status="processing", progress=20, message="File received.")
         else:
             _set(job_id, status="processing", progress=2, message="Starting media download…")
+            dl_emit = {"pct": -1, "t": 0.0}
+
+            def _on_download_progress(pct: int, msg: str) -> None:
+                # Throttle disk writes — yt-dlp fires this hook very often.
+                now = time.monotonic()
+                if (
+                    pct < 100
+                    and pct <= dl_emit["pct"] + 1
+                    and now - dl_emit["t"] < 0.5
+                ):
+                    return
+                dl_emit["pct"] = pct
+                dl_emit["t"] = now
+                _set(
+                    job_id,
+                    progress=2 + int(pct * 0.18),  # download stage = 2..20%
+                    message=msg,
+                )
+
             media_path = download(
                 job.url,
                 job_id,
                 job.quality,
                 job.burn_video,
-                progress_callback=lambda pct, msg: _set(
-                    job_id,
-                    progress=2 + int(pct * 0.18),  # download stage = 2..20%
-                    message=msg,
-                ),
+                progress_callback=_on_download_progress,
             )
             _set(
                 job_id,
