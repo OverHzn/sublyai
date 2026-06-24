@@ -21,10 +21,43 @@ Other goodies built into the UI:
 - Job history sidebar (last 10 jobs, stored locally in your browser)
 - One-click "Copy transcript" to clipboard
 - Installable as a PWA on mobile / desktop
+- **Desktop app** for Windows (Electron shell — no browser tab needed)
+- **LLM Provider settings** page (`/settings`) — configure OpenAI-compatible endpoints (UI ready; translation pipeline still uses Google)
 - Production deploy templates for Docker, systemd + nginx, and Caddy
 
 It runs on Windows, Ubuntu (or any Linux VPS), and works behind an
 [ngrok](https://ngrok.com/) tunnel for NAT VPSes.
+
+---
+
+## Quick start
+
+| Platform | Cara tercepat | Butuh |
+| --- | --- | --- |
+| **Windows — desktop app** | Download `SublyAI-Portable` dari [GitHub Releases](https://github.com/OverHzn/sublyai/releases) → double-click `SublyAI.exe` | ffmpeg di PATH |
+| **Windows — browser** | Double-click `start.bat` | Python 3.10+, ffmpeg |
+| **Windows — build sendiri** | `setup-app.bat` → `build-app.bat` → pakai `release\SublyAI-Portable\` | Python, Node 18+, ffmpeg |
+| **Server / VPS** | `docker compose up -d --build` | Docker |
+
+> **Catatan:** Folder `release\` dan `desktop\dist\` **tidak** di-commit ke git (ada di `.gitignore`). Binary hasil build di-upload manual ke GitHub Releases untuk distribusi.
+
+---
+
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Quality presets](#quality-presets)
+- [Project layout](#project-layout)
+- [Run with Docker](#run-with-docker-recommended)
+- [Run on Ubuntu](#run-on-ubuntu-or-any-linux-vps--without-docker)
+- [Expose publicly with ngrok](#expose-publicly-with-ngrok)
+- [Run on a VPS with systemd](#run-on-a-vps-with-systemd--nginxcaddy)
+- [Desktop App (Windows)](#desktop-app-windows--tanpa-browser)
+- [Run on Windows (browser)](#run-on-windows-local--via-browser)
+- [API](#api)
+- [Configuration](#configuration)
+- [Resilience notes](#resilience-notes)
+- [License](#license)
 
 ---
 
@@ -101,16 +134,24 @@ sublyai/
 │  ├─ transcriber.py     # faster-whisper, lazy-loaded model
 │  ├─ translator.py      # deep-translator, fault-tolerant per segment
 │  ├─ subtitle.py        # SRT/TXT writers
+│  ├─ llm.py              # OpenAI-compatible LLM config + client
 │  └─ jobs.py            # job lifecycle + status JSON
-├─ templates/index.html  # Jinja2 UI
+├─ templates/
+│  ├─ index.html         # main UI
+│  └─ settings.html      # LLM provider settings
 ├─ static/
 │  ├─ style.css          # premium SaaS dashboard styling
-│  └─ app.js             # form submit + 2.5s status polling
+│  ├─ app.js             # form submit + 2.5s status polling
+│  └─ settings.js        # LLM settings form
 ├─ downloads/            # downloaded media per job_id
 ├─ outputs/              # audio.wav, subtitle_id.srt, transcript_id.txt, video_subtitle.mp4
 ├─ jobs/                 # <job_id>.json status files
 └─ release/              # hasil package-portable.bat (tidak di-commit)
-   └─ SublyAI-Portable/  # paket siap distribusi (~580 MB, termasuk .venv)
+   └─ SublyAI-Portable/  # paket siap distribusi (~593 MB, termasuk .venv)
+      ├─ SublyAI.exe
+      ├─ Jalankan SublyAI.bat
+      ├─ DATA-LOCATION.txt
+      └─ .venv/           # Python deps sudah ter-bundle
 ```
 
 ---
@@ -381,7 +422,7 @@ Setelah build dengan `build-app.bat`, distribusikan `desktop\dist\SublyAI Setup 
 5. Double-click **`SublyAI.exe`** — app siap dipakai.
 6. Untuk stop server: jalankan **`stop.bat`** di folder instalasi, atau tutup jendela app.
 
-> Installer ~80 MB, **belum** termasuk Python deps. Butuh langkah 4 sekali per mesin.
+> Installer ~78 MB, **belum** termasuk Python deps. Butuh langkah 4 sekali per mesin.
 
 ---
 
@@ -394,7 +435,7 @@ Paket siap pakai tanpa setup Python manual — hasil `package-portable.bat` (oto
 1. Install **ffmpeg** di PATH.
 2. Copy seluruh folder **`release\SublyAI-Portable\`** ke lokasi mana saja (USB, drive lain, dll.).
 3. Double-click **`SublyAI.exe`** atau **`Jalankan SublyAI.bat`**.
-4. Tidak perlu `setup-app.bat` — `.venv` sudah ikut dalam folder (~580 MB total).
+4. Tidak perlu `setup-app.bat` — `.venv` sudah ikut dalam folder (~593 MB total).
 
 > Data job tetap di `%LOCALAPPDATA%\SublyAI`, bukan di folder portable. Lihat `DATA-LOCATION.txt` di folder portable.
 
@@ -402,21 +443,43 @@ Paket siap pakai tanpa setup Python manual — hasil `package-portable.bat` (oto
 
 ### Build installer & portable (developer)
 
+**Prasyarat:** ffmpeg, Python 3.10+, Node.js 18+ — semua harus ada di PATH.
+
 ```powershell
+# Setup sekali (venv + npm deps, ~2–3 menit)
+.\setup-app.bat
+
+# Build installer + paket portable (~1–2 menit + copy .venv ~15 detik)
 .\build-app.bat
 ```
 
-Script ini menjalankan `electron-builder` lalu otomatis memanggil `package-portable.bat`.
+`build-app.bat` menjalankan `electron-builder` lalu otomatis memanggil `package-portable.bat`.
 
-| File | Ukuran | Kegunaan |
+| File | Ukuran (uji build) | Kegunaan |
 | --- | --- | --- |
-| `desktop\dist\SublyAI Setup 1.0.0.exe` | ~80 MB | Installer NSIS — **butuh** `.venv` di folder install |
-| `desktop\dist\SublyAI 1.0.0.exe` | ~80 MB | Portable Electron — **butuh** `.venv` di folder yang sama |
-| `release\SublyAI-Portable\SublyAI.exe` | ~580 MB | **Rekomendasi distribusi** — app + `.venv` lengkap, bisa copy/pindah folder |
+| `desktop\dist\SublyAI Setup 1.0.0.exe` | ~78 MB | Installer NSIS — **butuh** `.venv` di folder install |
+| `desktop\dist\SublyAI 1.0.0.exe` | ~78 MB | Portable Electron — **butuh** `.venv` di folder yang sama |
+| `release\SublyAI-Portable\` (folder) | ~593 MB | **Rekomendasi distribusi** — app + `.venv` lengkap, bisa copy/pindah folder |
 
-> **Penting:** Installer NSIS (~80 MB) **belum** self-contained — pengguna harus jalankan `setup-app.bat` sekali (sudah ikut ter-bundle di folder instalasi). Untuk share tanpa setup Python, pakai `release\SublyAI-Portable\` (Opsi C).
+> **Penting:** Installer NSIS (~78 MB) **belum** self-contained — pengguna harus jalankan `setup-app.bat` sekali (sudah ikut ter-bundle di folder instalasi). Untuk share tanpa setup Python, pakai `release\SublyAI-Portable\` (Opsi C).
 
 Whisper model (~500 MB untuk `small`) di-download otomatis saat job pertama, lalu di-cache.
+
+### Distribusi via GitHub Releases
+
+Karena `release/` dan `desktop/dist/` di-ignore git, publish binary lewat [GitHub Releases](https://github.com/OverHzn/sublyai/releases):
+
+1. Jalankan `build-app.bat` di mesin Windows.
+2. Zip folder `release\SublyAI-Portable\` → mis. `SublyAI-Portable-v1.0.0.zip`.
+3. Buat release baru di GitHub → attach:
+   - `SublyAI-Portable-v1.0.0.zip` (rekomendasi)
+   - `desktop\dist\SublyAI Setup 1.0.0.exe` (opsional — installer NSIS)
+4. Tag versi sesuai `desktop/package.json` (saat ini `1.0.0`).
+
+```powershell
+# Contoh zip dari PowerShell (di root project)
+Compress-Archive -Path release\SublyAI-Portable\* -DestinationPath SublyAI-Portable-v1.0.0.zip
+```
 
 ### Troubleshooting (desktop)
 
@@ -429,7 +492,7 @@ Whisper model (~500 MB untuk `small`) di-download otomatis saat job pertama, lal
 | `ffmpeg` tidak ditemukan | Install ffmpeg dan pastikan ada di PATH (`ffmpeg -version`) |
 | Halaman LLM Settings | UI tersedia, tapi pipeline terjemahan masih memakai `deep-translator` (Google) — LLM belum terintegrasi |
 
-> Folder `desktop\dist\` dan `release\` tidak di-commit ke git — hasil build tetap lokal.
+> Folder `desktop\dist\`, `release\`, `.venv\`, dan `desktop\node_modules\` tidak di-commit ke git. Upload hasil build ke [GitHub Releases](https://github.com/OverHzn/sublyai/releases) untuk distribusi publik.
 
 ---
 
