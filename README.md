@@ -94,7 +94,6 @@ sublyai/
 ├─ package-portable.bat  # bundle .venv + app → release/SublyAI-Portable/
 ├─ desktop/
 │  ├─ main.js            # Electron shell, spawn Python server
-│  ├─ preload.js
 │  └─ package.json       # electron-builder config
 ├─ utils/
 │  ├─ downloader.py      # yt-dlp wrapper
@@ -331,19 +330,77 @@ Override config (Whisper model, target language, etc.) by dropping a
 
 ## Desktop App (Windows) — tanpa browser
 
-SublyAI bisa dibuka sebagai **aplikasi desktop** (jendela Electron sendiri, bukan tab browser). Shell Electron menjalankan server Python di background lalu memuat UI di `http://127.0.0.1:<port>`.
+SublyAI bisa dibuka sebagai **aplikasi desktop** (jendela Electron sendiri, bukan tab browser). Shell Electron menjalankan server Python di background lalu memuat UI di `http://127.0.0.1:<port>` (port 8000–8009, dipilih otomatis).
 
-### Cara pakai (dari source)
+Data job desktop (downloads, outputs, jobs, config) disimpan di **`%LOCALAPPDATA%\SublyAI`**, bukan di folder instalasi.
 
-| Langkah | File | Keterangan |
+### Requirements (semua cara install)
+
+| Software | Versi | Cek |
 | --- | --- | --- |
-| Setup sekali | `setup-app.bat` | Buat `.venv`, install deps Python + Electron |
-| Jalankan app | `start-app.bat` | Buka SublyAI sebagai desktop window |
-| Stop server | `stop.bat` | Matikan proses di port 8000–8009 |
+| **ffmpeg** | terbaru | `ffmpeg -version` di CMD/PowerShell |
+| **Python** | 3.10+ | Hanya untuk installer NSIS & dev — lihat Opsi B/C |
+| **Node.js** | 18+ | Hanya untuk build dari source — lihat Opsi A |
 
-**Requirements:** Python 3.10+, Node.js 18+, ffmpeg di PATH.
+---
 
-### Build installer & portable
+### Opsi A — Install dari source (developer)
+
+Untuk yang clone repo dan mau develop / build sendiri.
+
+1. Clone repo, buka folder project di CMD/PowerShell.
+2. Pastikan **ffmpeg**, **Python 3.10+**, dan **Node.js 18+** ada di PATH.
+3. **Setup sekali:** double-click `setup-app.bat`
+   - Membuat `.venv` di root project
+   - `pip install -r requirements.txt`
+   - `npm install` di folder `desktop/`
+4. **Jalankan app:** double-click `start-app.bat`
+   - Jendela desktop SublyAI terbuka (bukan browser)
+5. **Stop server:** double-click `stop.bat`
+
+| Langkah | File |
+| --- | --- |
+| Setup sekali | `setup-app.bat` |
+| Jalankan app | `start-app.bat` |
+| Stop server | `stop.bat` |
+
+---
+
+### Opsi B — Installer NSIS (untuk end user)
+
+Setelah build dengan `build-app.bat`, distribusikan `desktop\dist\SublyAI Setup 1.0.0.exe`.
+
+**Panduan untuk pengguna akhir:**
+
+1. Install **ffmpeg** dan tambahkan ke PATH ([unduh ffmpeg](https://ffmpeg.org/download.html)).
+2. Install **Python 3.10+** dari [python.org](https://www.python.org/downloads/) — centang **"Add Python to PATH"** saat install.
+3. Double-click **`SublyAI Setup 1.0.0.exe`**, pilih folder instalasi (default: `C:\Program Files\SublyAI\`).
+4. Buka folder instalasi, jalankan **`setup-app.bat` sekali**
+   - File ini ada di folder yang sama dengan `SublyAI.exe`
+   - Membuat `.venv` di folder instalasi (~beberapa menit)
+5. Double-click **`SublyAI.exe`** — app siap dipakai.
+6. Untuk stop server: jalankan **`stop.bat`** di folder instalasi, atau tutup jendela app.
+
+> Installer ~80 MB, **belum** termasuk Python deps. Butuh langkah 4 sekali per mesin.
+
+---
+
+### Opsi C — Portable lengkap (rekomendasi distribusi)
+
+Paket siap pakai tanpa setup Python manual — hasil `package-portable.bat` (otomatis dipanggil `build-app.bat`).
+
+**Panduan untuk pengguna akhir:**
+
+1. Install **ffmpeg** di PATH.
+2. Copy seluruh folder **`release\SublyAI-Portable\`** ke lokasi mana saja (USB, drive lain, dll.).
+3. Double-click **`SublyAI.exe`** atau **`Jalankan SublyAI.bat`**.
+4. Tidak perlu `setup-app.bat` — `.venv` sudah ikut dalam folder (~580 MB total).
+
+> Data job tetap di `%LOCALAPPDATA%\SublyAI`, bukan di folder portable. Lihat `DATA-LOCATION.txt` di folder portable.
+
+---
+
+### Build installer & portable (developer)
 
 ```powershell
 .\build-app.bat
@@ -357,7 +414,7 @@ Script ini menjalankan `electron-builder` lalu otomatis memanggil `package-porta
 | `desktop\dist\SublyAI 1.0.0.exe` | ~80 MB | Portable Electron — **butuh** `.venv` di folder yang sama |
 | `release\SublyAI-Portable\SublyAI.exe` | ~580 MB | **Rekomendasi distribusi** — app + `.venv` lengkap, bisa copy/pindah folder |
 
-> **Penting:** Installer NSIS **tidak** self-contained. Setelah install, jalankan `setup-app.bat` sekali di folder instalasi (atau copy `.venv` manual). Untuk share ke orang lain tanpa setup, pakai folder `release\SublyAI-Portable\` — double-click `SublyAI.exe` atau `Jalankan SublyAI.bat`.
+> **Penting:** Installer NSIS (~80 MB) **belum** self-contained — pengguna harus jalankan `setup-app.bat` sekali (sudah ikut ter-bundle di folder instalasi). Untuk share tanpa setup Python, pakai `release\SublyAI-Portable\` (Opsi C).
 
 Whisper model (~500 MB untuk `small`) di-download otomatis saat job pertama, lalu di-cache.
 
@@ -394,10 +451,10 @@ Atau manual:
    python run_local.py
    ```
 
-   `run_local.py` menjalankan server di `127.0.0.1:8000` dan membuka browser
-   otomatis. Alternatif: `.\start.ps1` atau `uvicorn app:app --host 127.0.0.1 --port 8000`.
+   `run_local.py` menjalankan server di `127.0.0.1` (port 8000–8009) dan membuka browser
+   otomatis. Alternatif: `.\start.ps1`.
 
-4. Buka <http://127.0.0.1:8000> kalau browser tidak terbuka sendiri.
+4. Buka URL yang muncul di terminal kalau browser tidak terbuka sendiri.
 
 > **Tip:** SublyAI bisa di-install sebagai PWA dari browser (Chrome/Edge →
 > menu → *Install app*) supaya terasa seperti desktop app.
